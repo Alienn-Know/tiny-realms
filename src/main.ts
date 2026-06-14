@@ -1,17 +1,8 @@
 import './style.css';
-import { Application, Graphics, Text } from 'pixi.js';
+import { Graphics, Text } from 'pixi.js';
+import { createApp } from './app/bootstrap';
 
-const app = new Application();
-
-await app.init({
-  background: '#1a1a2e',
-  resizeTo: window,
-  antialias: true,
-  resolution: window.devicePixelRatio || 1,
-  autoDensity: true,
-});
-
-document.body.appendChild(app.canvas);
+const app = await createApp(document.body);
 
 const circle = new Graphics();
 circle.fill(0xe94560);
