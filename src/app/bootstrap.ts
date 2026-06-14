@@ -1,6 +1,6 @@
 import { Application } from 'pixi.js';
 
-export async function createApp(canvasContainer: HTMLElement): Promise<Application> {
+export async function createApp(container: HTMLElement): Promise<Application> {
   const app = new Application();
 
   await app.init({
@@ -11,6 +11,7 @@ export async function createApp(canvasContainer: HTMLElement): Promise<Applicati
     autoDensity: true,
   });
 
-  canvasContainer.appendChild(app.canvas);
+  container.appendChild(app.canvas);
+  app.ticker.stop();
   return app;
 }

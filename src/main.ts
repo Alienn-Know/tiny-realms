@@ -1,46 +1,38 @@
 import './style.css';
-import { Graphics, Text } from 'pixi.js';
+import { Graphics } from 'pixi.js';
+import { TransformComponent, VelocityComponent, SpriteComponent } from './components';
+import { World } from './core/ecs';
+import { GameLoop } from './core/loop/GameLoop';
 import { createApp } from './app/bootstrap';
+import { BoundarySystem, MovementSystem, RenderSystem } from './systems';
 
 const app = await createApp(document.body);
 
-const circle = new Graphics();
-circle.fill(0xe94560);
-circle.circle(0, 0, 48);
-circle.x = app.screen.width / 2 - 80;
-circle.y = app.screen.height / 2;
-app.stage.addChild(circle);
+const world = new World();
 
-const square = new Graphics();
-square.fill(0x0f3460);
-square.stroke({ width: 2, color: 0xffffff, alpha: 0.3 });
-square.rect(-48, -48, 96, 96);
-square.x = app.screen.width / 2 + 80;
-square.y = app.screen.height / 2;
-app.stage.addChild(square);
+world.addSystem(new MovementSystem());
+world.addSystem(new BoundarySystem(app.screen.width, app.screen.height));
+world.addSystem(new RenderSystem());
 
-const label = new Text({
-  text: 'Tiny Realms — Phase 0',
-  style: {
-    fontFamily: 'system-ui, sans-serif',
-    fontSize: 24,
-    fill: '#ffffff',
-  },
-});
-label.anchor.set(0.5);
-label.x = app.screen.width / 2;
-label.y = 40;
-app.stage.addChild(label);
+const player = world.createEntity();
 
-app.ticker.add(() => {
-  circle.rotation += 0.01;
-  square.rotation -= 0.01;
-});
+const playerSize = 48;
+const playerView = new Graphics();
+playerView.fill(0xe94560);
+playerView.stroke({ width: 2, color: 0xffffff, alpha: 0.4 });
+playerView.rect(-playerSize / 2, -playerSize / 2, playerSize, playerSize);
+
+app.stage.addChild(playerView);
+
+world.addComponent(player, new TransformComponent(app.screen.width / 2, app.screen.height / 2));
+world.addComponent(player, new VelocityComponent(120, 80));
+world.addComponent(player, new SpriteComponent(playerView));
 
 window.addEventListener('resize', () => {
-  circle.x = app.screen.width / 2 - 80;
-  circle.y = app.screen.height / 2;
-  square.x = app.screen.width / 2 + 80;
-  square.y = app.screen.height / 2;
-  label.x = app.screen.width / 2;
+  // BoundarySystem использует app.screen.width/height напрямую,
+  // поэтому пересоздаём его с новыми размерами
+  world.addSystem(new BoundarySystem(app.screen.width, app.screen.height));
 });
+
+const loop = new GameLoop(world, app);
+loop.start();
