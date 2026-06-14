@@ -1,7 +1,0 @@
----
-description: Bridge for brief response format rule
-alwaysApply: true
----
-
-Формат ответа «Краткость и Структура» (учитывай также правило always-creative):
-[.agents/rules/response-format-brief.md](../../.agents/rules/response-format-brief.md)

@@ -1,7 +1,0 @@
----
-description: Bridge for language rule
-alwaysApply: true
----
-
-Правила языка проекта (русский для планов и задач):
-[.agents/rules/language.md](../../.agents/rules/language.md)

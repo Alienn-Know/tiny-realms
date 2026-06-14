@@ -1,7 +1,0 @@
----
-description: Bridge for documentation rule
-alwaysApply: true
----
-
-Сведения о ведении документации проекта:
-[.agents/rules/documentation.md](../../.agents/rules/documentation.md)
