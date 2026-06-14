@@ -1,6 +1,6 @@
 # Tiny Realms
 
-Интерактивная визуализация на **TypeScript + PixiJS**. Проект развивается по плану из [`plan.md`](./plan.md).
+Интерактивная визуализация на **TypeScript + PixiJS**. Проект развивается по плану из [`plan/plan.md`](./plan/plan.md).
 
 ## Фаза 0 — Готова ✅
 
@@ -42,6 +42,8 @@ npm run dev
 - `npm run build` — сборка
 - `npm run preview` — превью сборки
 
-## План дальше
+## План
 
-См. [`plan.md`](./plan.md). Следующий шаг — **Фаза 1: Основы** (TypeScript + PixiJS).
+См. [`plan/plan.md`](./plan/plan.md).
+
+Следующий шаг — **Фаза 1: Основы** (TypeScript + PixiJS).
