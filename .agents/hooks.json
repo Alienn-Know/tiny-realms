@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "node .cursor/hooks/generate-docks.js --mode afterFileEdit",
+        "timeout": 20
+      }
+    ],
+    "stop": [
+      {
+        "command": "node .cursor/hooks/generate-docks.js --mode stop",
+        "timeout": 20,
+        "loop_limit": 1
+      }
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+---
+description: Bridge for no-duplicates rule
+alwaysApply: true
+---
+
+Правило против дублирования файлов в .cursor:
+[.agents/rules/no-cursor-duplicates.md](../../.agents/rules/no-cursor-duplicates.md)

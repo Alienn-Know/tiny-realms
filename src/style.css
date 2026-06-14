@@ -1,0 +1,29 @@
+/* Basic page reset so the Pixi canvas can fill the viewport cleanly. */
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  /* Hide browser scrollbars around the canvas. */
+  overflow: hidden;
+  background: #0f172a;
+  font-family: Arial, sans-serif;
+}
+
+canvas {
+  /* Remove inline canvas gaps in normal document flow. */
+  display: block;
+  touch-action: none;
+}

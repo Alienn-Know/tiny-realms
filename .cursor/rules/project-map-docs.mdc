@@ -1,0 +1,7 @@
+---
+description: Bridge for project-map-docs rule
+alwaysApply: true
+---
+
+Инструкции по ведению карты модулей в docks/:
+[.agents/rules/project-map-docs.md](../../.agents/rules/project-map-docs.md)

@@ -1,0 +1,7 @@
+---
+description: Bridge for LLMs full doc rule
+alwaysApply: true
+---
+
+Полная документация для LLM по проекту:
+[.agents/rules/llms-full-doc.md](../../.agents/rules/llms-full-doc.md)

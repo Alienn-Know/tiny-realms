@@ -1,0 +1,10 @@
+---
+description: Always use the Creative Conversational Assistant style
+alwaysApply: true
+---
+
+Это мост к правилу из .agents. Всегда учитывай и применяй инструкции из:
+[always-creative.md](../../.agents/rules/always-creative.md)
+
+Используй навык:
+[SKILL.md](../../.agents/skills/kreativnyy-razgovornyy-pomoshchnik/SKILL.md)
