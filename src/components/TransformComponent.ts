@@ -1,6 +1,8 @@
 import { Component } from '../core/ecs';
 
 export class TransformComponent extends Component {
+  static readonly typeId = Symbol('TransformComponent');
+
   prevX = 0;
   prevY = 0;
   prevRotation = 0;

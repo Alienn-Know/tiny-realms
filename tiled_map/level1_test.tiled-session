@@ -1,0 +1,44 @@
+{
+    "activeFile": "",
+    "expandedProjectPaths": [
+        "."
+    ],
+    "fileStates": {
+        "Exterior_objects.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 3
+        },
+        "Tiles_exterior.tsj": {
+            "scaleInDock": 1,
+            "scaleInEditor": 4
+        },
+        "Tiles_exterior.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 3
+        },
+        "Water_coasts.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 3
+        }
+    },
+    "last.imagePath": "C:/Users/user/vibe projects/tiny-realms/raw_assets/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/Tiled_files",
+    "map.width": 32,
+    "openFiles": [
+        "Tiles_exterior.tsx",
+        "Exterior_objects.tsx",
+        "Water_coasts.tsx",
+        "Tiles_exterior.tsj"
+    ],
+    "project": "level1_test.tiled-project",
+    "recentFiles": [
+        "Tiles_exterior.tsj",
+        "Water_coasts.tsx",
+        "Exterior_objects.tsx",
+        "Tiles_exterior.tsx"
+    ],
+    "tileset.lastUsedFormat": "json",
+    "tileset.tileSize": {
+        "height": 16,
+        "width": 16
+    }
+}

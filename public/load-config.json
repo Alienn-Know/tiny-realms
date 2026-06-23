@@ -1,0 +1,129 @@
+{
+  "bundles": {
+    "terrain": {
+      "type": "tileset",
+      "path": "tilesets/terrain.png",
+      "tileSize": 16,
+      "walkableProperty": "walkable"
+    },
+    "tiles_exterior": {
+      "type": "tileset",
+      "path": "tilesets/Tiles_exterior.png",
+      "tileSize": 16,
+      "walkableProperty": "walkable"
+    },
+    "cracked_tiles_exterior": {
+      "type": "tileset",
+      "path": "tilesets/Decorative_cracks_exterior.png",
+      "tileSize": 16,
+      "walkableProperty": "walkable"
+    },
+    "spots": {
+      "type": "tileset",
+      "path": "tilesets/Spots.png",
+      "tileSize": 16,
+      "walkableProperty": "walkable"
+    },
+    "exterior_objects": {
+      "type": "tileset",
+      "path": "tilesets/Exterior_objects.png",
+      "tileSize": 16,
+      "walkableProperty": "walkable"
+    },
+    "water_coasts": {
+      "type": "tileset",
+      "path": "tilesets/Water_coasts.png",
+      "tileSize": 16,
+      "walkableProperty": "walkable"
+    },
+    "water_detailization": {
+      "type": "tileset",
+      "path": "tilesets/water_detilazation_v2.png",
+      "tileSize": 16,
+      "walkableProperty": "walkable"
+    },
+    "trees_grass": {
+      "type": "tileset",
+      "path": "tilesets/Trees_grass_alternative_fit.png",
+      "tileSize": 16,
+      "walkableProperty": "walkable"
+    },
+    "discoverer1_writing": {
+      "type": "tileset",
+      "path": "tilesets/Discoverer1_writing.png",
+      "tileSize": 16,
+      "walkableProperty": "walkable"
+    },
+    "discoverer2_idle": {
+      "type": "tileset",
+      "path": "tilesets/Discoverer2_Idle.png",
+      "tileSize": 16,
+      "walkableProperty": "walkable"
+    },
+    "player": {
+      "type": "sprite",
+      "path": "sprites/player.png"
+    },
+    "enemy": {
+      "type": "sprite",
+      "path": "sprites/enemy.png"
+    },
+    "npc": {
+      "type": "sprite",
+      "path": "sprites/npc.png"
+    }
+  },
+  "tilemaps": [
+    {
+      "name": "level1",
+      "path": "maps/level1.json",
+      "format": "json",
+      "tileLayers": ["ground"],
+      "objectLayers": ["entities"],
+      "objectTypes": {
+        "player_spawn": "player",
+        "enemy": "enemy",
+        "npc": "npc"
+      },
+      "objectSizeFallback": "tile"
+    },
+    {
+      "name": "temple",
+      "path": "maps/Ruined_temple_exterior.json",
+      "format": "json",
+      "tileLayers": [
+        "water",
+        "water_detailization",
+        "ground",
+        "spots",
+        "spots2",
+        "grass",
+        "grass_details",
+        "trees1",
+        "trees2",
+        "trees3",
+        "flowers_plants",
+        "flower_plants2",
+        "flowers_plants3",
+        "site",
+        "trees4",
+        "House_platform",
+        "House",
+        "Bricks",
+        "Roof",
+        "Statues",
+        "Columns",
+        "trees5",
+        "trees6",
+        "flowers_plants4",
+        "flowers_plants5",
+        "Discoverers"
+      ],
+      "objectLayers": ["entities"],
+      "objectTypes": {
+        "player_spawn": "player"
+      },
+      "objectSizeFallback": "tile"
+    }
+  ]
+}

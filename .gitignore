@@ -22,3 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Raw/imported asset sources (not used at runtime)
+raw_assets/
+
+# macOS resource forks
+__MACOSX/
+*.DS_Store
+
+# Temp planning files
+plan/temp_plan.md
+

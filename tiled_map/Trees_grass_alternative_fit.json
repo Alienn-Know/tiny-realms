@@ -1,0 +1,14 @@
+{ "columns":17,
+ "image":"..\/raw_assets\/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art\/Tiled_files\/Trees_grass_alternative_fit.png",
+ "imageheight":416,
+ "imagewidth":272,
+ "margin":0,
+ "name":"Trees_grass_alternative_fit",
+ "spacing":0,
+ "tilecount":442,
+ "tiledversion":"1.12.2",
+ "tileheight":16,
+ "tilewidth":16,
+ "type":"tileset",
+ "version":"1.10"
+}

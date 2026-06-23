@@ -1,12 +1,14 @@
-import { Application } from 'pixi.js';
+import {Application, TextureStyle} from 'pixi.js';
 
 export async function createApp(container: HTMLElement): Promise<Application> {
   const app = new Application();
 
+  TextureStyle.defaultOptions.scaleMode = 'nearest'
+
   await app.init({
-    background: '#1a1a2e',
     resizeTo: window,
-    antialias: true,
+    antialias: false,
+    roundPixels: true,
     resolution: window.devicePixelRatio || 1,
     autoDensity: true,
   });

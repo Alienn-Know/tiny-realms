@@ -1,0 +1,14 @@
+{ "columns":27,
+ "image":"..\/raw_assets\/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art\/Tiled_files\/Tiles_exterior.png",
+ "imageheight":256,
+ "imagewidth":432,
+ "margin":0,
+ "name":"Tiles_exterior",
+ "spacing":0,
+ "tilecount":432,
+ "tiledversion":"1.12.2",
+ "tileheight":16,
+ "tilewidth":16,
+ "type":"tileset",
+ "version":"1.10"
+}
