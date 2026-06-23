@@ -61,16 +61,9 @@
       "walkableProperty": "walkable"
     },
     "player": {
-      "type": "sprite",
-      "path": "sprites/player.png"
-    },
-    "enemy": {
-      "type": "sprite",
-      "path": "sprites/enemy.png"
-    },
-    "npc": {
-      "type": "sprite",
-      "path": "sprites/npc.png"
+      "type": "spritesheet",
+      "image": "sprites/slime3.png",
+      "data": "sprites/slime3.json"
     }
   },
   "tilemaps": [

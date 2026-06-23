@@ -1,4 +1,4 @@
-import { InputComponent, VelocityComponent, TransformComponent, SizeComponent } from '../components';
+import { InputComponent, VelocityComponent, TransformComponent, SizeComponent, AnimationComponent, AnimationDefinitionComponent } from '../components';
 import { System, World } from '../core/ecs';
 import { KeyBindings } from '../core/input/KeyBindings';
 import { CollisionGrid } from '../map/CollisionGrid';
@@ -9,15 +9,22 @@ import { CollisionGrid } from '../map/CollisionGrid';
  *
  * Логика:
  * - Читает нажатия через {@link KeyBindings} (раскладка无关 — `event.code`).
- * - Считает вектор направления, нормализует, умножает на `speed`.
+ * - Считает вектор направления, нормализует, умножает на `speed × runMultiplier`.
  * - Двигает по X и Y **раздельно**, проверяя коллизию (`CollisionGrid.isBoxWalkable`).
  *   Если блок — откатывает соответствующую ось (sliding по стенам).
+ * - Триггерит `attack` через `AnimationComponent.triggerAttack()` если entity
+ *   имеет `Animation` + `AnimationDefinition`. **Не блокирует** движение:
+ *   attack-анимация играет поверх walk/idle.
  *
  * Применяется к entity с **InputComponent + VelocityComponent + TransformComponent + SizeComponent**.
+ * Опционально поддерживает `AnimationComponent + AnimationDefinitionComponent`.
  */
 export class PlayerControlSystem extends System {
-  /** 🏃 Скорость в пикселях в секунду. */
+  /** 🏃 Скорость в пикселях в секунду (без спринта). */
   private speed: number;
+
+  /** ⚡ Множитель скорости при спринте (Shift зажат). */
+  private runMultiplier: number;
 
   /** 🪢 Биндинги. */
   private bindings: KeyBindings;
@@ -26,15 +33,17 @@ export class PlayerControlSystem extends System {
   private collision: CollisionGrid;
 
   /**
-   * @param speed - px/с
+   * @param speed - px/с (без спринта)
    * @param collision - `CollisionGrid` (обязателен)
-   * @param bindings - опционально (default: WASD + стрелки)
+   * @param bindings - опционально (default: WASD + стрелки + Space/Shift)
+   * @param runMultiplier - множитель скорости при Shift (default 1.5)
    */
-  constructor(speed: number, collision: CollisionGrid, bindings?: KeyBindings) {
+  constructor(speed: number, collision: CollisionGrid, bindings?: KeyBindings, runMultiplier = 1.5) {
     super();
     this.speed = speed;
     this.collision = collision;
     this.bindings = bindings ?? new KeyBindings();
+    this.runMultiplier = runMultiplier;
   }
 
   update(world: World, dt: number): void {
@@ -43,8 +52,15 @@ export class PlayerControlSystem extends System {
       const velocity = world.getComponent(entity, VelocityComponent)!;
       const transform = world.getComponent(entity, TransformComponent)!;
       const size = world.getComponent(entity, SizeComponent)!;
+      const anim = world.getComponent(entity, AnimationComponent);
+      const animDef = world.getComponent(entity, AnimationDefinitionComponent);
 
-      // 1️⃣ Compute desired velocity from input
+      // 1️⃣ Attack trigger (без блокировки движения)
+      if (anim && animDef && this.bindings.isActive(input.keys, 'attack') && !anim.attacking) {
+        anim.triggerAttack(animDef);
+      }
+
+      // 2️⃣ Compute desired velocity from input
       let dx = 0;
       let dy = 0;
       if (this.bindings.isActive(input.keys, 'move-up')) dy -= 1;
@@ -53,16 +69,19 @@ export class PlayerControlSystem extends System {
       if (this.bindings.isActive(input.keys, 'move-right')) dx += 1;
 
       const len = Math.hypot(dx, dy);
+      const sprint = this.bindings.isActive(input.keys, 'sprint') ? this.runMultiplier : 1;
+      const effectiveSpeed = this.speed * sprint;
+
       if (len > 0) {
-        velocity.vx = (dx / len) * this.speed;
-        velocity.vy = (dy / len) * this.speed;
+        velocity.vx = (dx / len) * effectiveSpeed;
+        velocity.vy = (dy / len) * effectiveSpeed;
       } else {
         velocity.vx = 0;
         velocity.vy = 0;
-        continue; // нет движения → нечего чекать
+        // НЕ continue — collision всё равно нужен для corner case
       }
 
-      // 2️⃣ Sliding collision: проверяем X и Y отдельно
+      // 3️⃣ Sliding collision: проверяем X и Y отдельно
       const w = size.halfWidth * 2;
       const h = size.halfHeight * 2;
       const newX = transform.x + velocity.vx * dt;

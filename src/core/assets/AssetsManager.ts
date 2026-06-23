@@ -1,4 +1,4 @@
-import { Assets, type AssetsManifest } from 'pixi.js';
+import { Assets, Spritesheet, type AssetsManifest, type Texture } from 'pixi.js';
 import type { LoadConfig } from './AssetsConfig';
 
 /**
@@ -14,14 +14,19 @@ import type { LoadConfig } from './AssetsConfig';
  * await AssetsManager.loadAll(progress => loading.setProgress(progress));
  * const tex = AssetsManager.getTexture('player');
  * ```
+ *
+ * Поддерживаемые типы бандлов (см. {@link LoadConfig}):
+ * - `sprite` — одиночная текстура → `Texture`
+ * - `tileset` — одиночная текстура (для тайлсетов) → `Texture`
+ * - `spritesheet` — атлас → `Spritesheet` (image + JSON descriptor)
  */
 export class AssetsManager {
   static #config: LoadConfig | null = null;
   static #initialized = false;
-  /** 🗺️ Кеш загруженных текстур: alias → Texture. */
+  /** 🗺️ Кеш загруженных ресурсов: alias → Texture | Spritesheet. */
   static #textures: Record<string, unknown> = {};
 
-  /** 🖼️ Получить все загруженные текстуры (alias → Texture). */
+  /** 🖼️ Получить все загруженные ресурсы (alias → Texture | Spritesheet). */
   static getAllTextures(): Record<string, unknown> {
     return this.#textures;
   }
@@ -48,14 +53,53 @@ export class AssetsManager {
     return Assets.loadBundle(alias, onProgress);
   }
 
-  /** 📦📦 Загрузить все бандлы из конфига. */
+  /**
+   * 📦📦 Загрузить все бандлы из конфига.
+   *
+   * Для каждого бандла:
+   * - `sprite`/`tileset` → грузим через `Assets.loadBundle` (возвращает Texture)
+   * - `spritesheet` → собираем `Spritesheet` вручную из image + JSON
+   *   (`Assets.loadBundle` для spritesheet-бандлов в Pixi v8 возвращает
+   *   `{ 'alias-image': Texture, 'alias-data': JSON }`, а не готовый Spritesheet)
+   */
   static async loadAll(onProgress?: (p: number) => void): Promise<void> {
     if (!this.#config) throw new Error('[AssetsManager] No config loaded. Call loadConfig() first.');
-    const aliases = Object.keys(this.#config.bundles);
-    this.#textures = await Assets.loadBundle(aliases, onProgress);
+
+    const bundles = this.#config.bundles;
+    const aliases = Object.keys(bundles);
+    const total = aliases.length;
+    let done = 0;
+
+    const textures: Record<string, unknown> = {};
+    for (const alias of aliases) {
+      const bundle = bundles[alias];
+      if (bundle.type === 'spritesheet') {
+        textures[alias] = await AssetsManager.#loadSpritesheet(bundle.image, bundle.data);
+      } else {
+        const result = await Assets.loadBundle(alias);
+        textures[alias] = result[alias];
+      }
+      done += 1;
+      onProgress?.(done / total);
+    }
+    this.#textures = textures;
   }
 
-  /** 🖼️ Получить текстуру по alias (для спрайтов/tileset). */
+  /**
+   * 🎞️ Собрать `Spritesheet` из пары image + JSON descriptor.
+   * Возвращает `Spritesheet` (parse() дожидается завершения нарезки кадров).
+   */
+  static async #loadSpritesheet(imagePath: string, dataPath: string): Promise<Spritesheet> {
+    const [image, json] = await Promise.all([
+      Assets.load<Texture>(imagePath),
+      fetch(dataPath).then((r) => r.json()),
+    ]);
+    const sheet = new Spritesheet({ texture: image.source, data: json });
+    await sheet.parse();
+    return sheet;
+  }
+
+  /** 🖼️ Получить ресурс по alias (Texture или Spritesheet). */
   static getTexture(alias: string): unknown {
     return this.#textures[alias];
   }
@@ -84,6 +128,8 @@ export class AssetsManager {
           });
           break;
         case 'spritesheet':
+          // Регистрируем оба ассета в бандле — но `loadAll` использует
+          // прямой `Assets.load` для image и `fetch` для JSON, минуя loadBundle.
           bundles.push({
             name: alias,
             assets: {

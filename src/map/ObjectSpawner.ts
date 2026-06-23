@@ -1,5 +1,7 @@
-import { Container, Sprite, Text, TextStyle } from 'pixi.js';
+import { AnimatedSprite, Container, Sprite, Text, TextStyle, type Spritesheet, type Texture } from 'pixi.js';
 import { World, type Entity } from '../core/ecs';
+import { AnimationComponent } from '../components/AnimationComponent';
+import { AnimationDefinitionComponent, type AnimationDef, type Facing, type FacingFrames } from '../components/AnimationDefinitionComponent';
 import { InputComponent } from '../components/InputComponent';
 import { PropertiesComponent } from '../components/PropertiesComponent';
 import { ShapeComponent, type ShapeData } from '../components/ShapeComponent';
@@ -148,11 +150,12 @@ export class ObjectSpawner {
     return id;
   }
 
-  /** 🏁 Финализация спавна: InputComponent + properties + collision. */
+  /** 🏁 Финализация спавна: InputComponent + properties + collision + animations (player). */
   static #finalizeSpawn(ctx: SpawnContext, id: Entity, obj: TiledObject, alias: string | undefined): void {
-    // Player gets InputComponent
+    // Player gets InputComponent + Animation + AnimationDefinition
     if (obj.type === 'player_spawn' || alias === 'player') {
       ctx.world.addComponent(id, new InputComponent());
+      ObjectSpawner.#setupPlayerAnimation(ctx, id);
     }
 
     ObjectSpawner.#addProperties(ctx, id, obj);
@@ -166,6 +169,98 @@ export class ObjectSpawner {
       const cy = obj.y + h / 2;
       ctx.collision.addSolidBox(id, cx, cy, w, h);
     }
+  }
+
+  /**
+   * 🎬 Инициализирует `AnimationComponent` + `AnimationDefinitionComponent` для player'а.
+   *
+   * Берёт спрайтшит (Pixi `Spritesheet`) из `ctx.textures['player']` и режет кадры
+   * по схеме `<state>-<facing>-<i>`, описанной в `slime3.json` (`layout`).
+   * Подменяет `SpriteComponent.view` (был `Sprite`) на `AnimatedSprite`.
+   */
+  static #setupPlayerAnimation(ctx: SpawnContext, id: Entity): void {
+    const sheet = ctx.textures['player'] as Spritesheet | undefined;
+    if (!sheet) {
+      console.warn('[ObjectSpawner] No spritesheet loaded for alias "player"');
+      return;
+    }
+
+    // 🗺️ Layout из JSON (см. tools/build-slime3-atlas.mjs)
+    const dataAny = sheet.data as { layout?: Record<string, unknown> } | Record<string, unknown> | undefined;
+    const layoutRaw = (dataAny as { layout?: Record<string, unknown> })?.layout;
+    if (!layoutRaw) {
+      console.warn('[ObjectSpawner] Spritesheet JSON missing "layout" metadata');
+    }
+    const layout = layoutRaw as {
+      frameSize: number;
+      framesPerRow: number;
+      facings: Facing[];
+      states: string[];
+      frameTime: Record<string, number>;
+      loop: Record<string, boolean>;
+    };
+
+    // 🧩 Собираем AnimationDef'ы по state × facing
+    const states: Record<string, AnimationDef> = {};
+    for (const state of layout.states) {
+      const facingFrames: FacingFrames = { front: [], back: [], left: [], right: [] };
+      for (const facing of layout.facings) {
+        // Ищем кадры с префиксом "<state>-<facing>-<i>"
+        const prefix = `${state}-${facing}-`;
+        const keys = Object.keys(sheet.textures)
+          .filter((k) => k.startsWith(prefix))
+          .sort((a, b) => {
+            const ai = parseInt(a.slice(prefix.length), 10);
+            const bi = parseInt(b.slice(prefix.length), 10);
+            return ai - bi;
+          });
+        for (const k of keys) {
+          const tex = sheet.textures[k] as Texture;
+          if (tex) facingFrames[facing].push(tex);
+        }
+      }
+      states[state] = {
+        frames: facingFrames,
+        frameTime: layout.frameTime[state] ?? 0.12,
+        loop: layout.loop[state] ?? false,
+      };
+    }
+
+    const def = new AnimationDefinitionComponent(states);
+    ctx.world.addComponent(id, def);
+
+    // 🎞️ Создаём AnimatedSprite с начальными кадрами (idle-front).
+    //    `animationSpeed = 0` + `autoUpdate = false`: кадры двигаем вручную
+    //    в `AnimationComponent.update()` через `stateTime` для точного контроля.
+    const initialFrames = def.states.idle?.frames.front ?? [];
+    const body = new AnimatedSprite({ textures: initialFrames, loop: true, animationSpeed: 0 });
+    body.autoUpdate = false;
+    body.anchor.set(0.5, 1); // ноги стоят на тайле
+
+    // 🖼️ Заменяем Sprite в SpriteComponent (был Sprite) на AnimatedSprite
+    const spriteComp = ctx.world.getComponent(id, SpriteComponent);
+    if (spriteComp) {
+      // Удаляем старый Sprite из контейнера, добавляем AnimatedSprite
+      const oldView = spriteComp.view;
+      const parent = oldView.parent;
+      if (parent) {
+        parent.removeChild(oldView);
+        parent.addChild(body);
+      }
+      oldView.destroy();
+      spriteComp.view = body;
+    } else {
+      ctx.world.addComponent(id, new SpriteComponent(body));
+      ctx.worldContainer.addChild(body);
+    }
+
+    // 📏 SizeComponent из frame size (collision AABB)
+    const frameSize = layout.frameSize;
+    ctx.world.addComponent(id, new SizeComponent(frameSize, frameSize, true));
+
+    // 🎬 AnimationComponent (инициализирует кадры на body)
+    const anim = new AnimationComponent(body, def);
+    ctx.world.addComponent(id, anim);
   }
 
   /** 🏷️ Custom properties → PropertiesComponent. */

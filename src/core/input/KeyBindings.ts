@@ -8,14 +8,22 @@
  * ZQSD-стиль для AZERTY, IJKL-стиль, или любые другие раскладки.
  */
 
-export type GameAction = 'move-up' | 'move-down' | 'move-left' | 'move-right';
+export type GameAction =
+  | 'move-up'
+  | 'move-down'
+  | 'move-left'
+  | 'move-right'
+  | 'attack'
+  | 'sprint';
 
-/** 🗺️ Дефолтные биндинги: WASD + стрелки. */
+/** 🗺️ Дефолтные биндинги: WASD + стрелки, Space = атака, Shift = бег. */
 const DEFAULT_BINDINGS: Record<GameAction, string[]> = {
   'move-up':    ['KeyW', 'ArrowUp'],
   'move-down':  ['KeyS', 'ArrowDown'],
   'move-left':  ['KeyA', 'ArrowLeft'],
   'move-right': ['KeyD', 'ArrowRight'],
+  'attack':     ['Space'],
+  'sprint':     ['ShiftLeft', 'ShiftRight'],
 };
 
 export class KeyBindings {
@@ -31,8 +39,8 @@ export class KeyBindings {
 
   /**
    * 🔗 Привязать действие к набору физических клавиш (любая из них сработает).
-   * @param action - игровое действие (`'move-up'` и т.п.)
-   * @param codes - массив `event.code` (`'KeyW'`, `'ArrowUp'`, `'Space'`, ...)
+   * @param action - игровое действие (`'move-up'`, `'attack'`, `'sprint'` и т.п.)
+   * @param codes - массив `event.code` (`'KeyW'`, `'ArrowUp'`, `'Space'`, `'ShiftLeft'`, ...)
    */
   bind(action: GameAction, codes: string[]): void {
     this.map.set(action, new Set(codes.map((c) => c.toLowerCase())));

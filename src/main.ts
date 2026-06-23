@@ -6,6 +6,7 @@ import { createApp } from './app/bootstrap';
 import { AssetsManager } from './core/assets';
 import { LoadingScreen } from './ui/LoadingScreen';
 import {
+  AnimationSystem,
   CameraInputSystem,
   CameraRenderSystem,
   CameraSystem,
@@ -76,6 +77,7 @@ world.addSystem(new TileAnimationSystem());
 world.addSystem(new ImageLayerRenderSystem(worldContainer, mapData));
 world.addSystem(new PlayerControlSystem(140, collision));
 world.addSystem(new MovementSystem());
+world.addSystem(new AnimationSystem());
 world.addSystem(new CameraInputSystem());
 world.addSystem(new TouchCameraInputSystem());
 world.addSystem(new CameraSystem());
@@ -89,7 +91,7 @@ const camera = world.createEntity();
 const cameraComp = new CameraComponent();
 cameraComp.viewportWidth = app.screen.width;
 cameraComp.viewportHeight = app.screen.height;
-// cameraComp.target = player;
+cameraComp.target = player;
 cameraComp.minZoom = 0.2;
 cameraComp.maxZoom = 4;
 // 🎯 Центрируем камеру на центре текущих тайлов (с учётом смещения infinite map)

@@ -1,3 +1,4 @@
+export { AnimationSystem } from './AnimationSystem';
 export { CameraInputSystem } from './CameraInputSystem';
 export { CameraRenderSystem } from './CameraRenderSystem';
 export { CameraSystem } from './CameraSystem';

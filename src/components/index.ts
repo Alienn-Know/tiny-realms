@@ -1,3 +1,5 @@
+export { AnimationComponent } from './AnimationComponent';
+export { AnimationDefinitionComponent, type AnimationDef, type Facing, type FacingFrames } from './AnimationDefinitionComponent';
 export { CameraComponent } from './CameraComponent';
 export { InputComponent } from './InputComponent';
 export { PropertiesComponent } from './PropertiesComponent';
