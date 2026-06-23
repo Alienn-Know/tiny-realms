@@ -47,8 +47,10 @@ const STATES = [
   { name: 'death',  file: 'Slime3_Death_with_shadow.png' },
 ];
 
-/** 🧭 Направления в порядке строк внутри каждого state. */
-const FACINGS = ['front', 'right', 'back', 'left'];
+/** 🧭 Направления в порядке строк внутри каждого state.
+ *  Подтверждённый layout Slime3: row 0 = front (вниз), row 1 = back (вверх),
+ *  row 2 = left, row 3 = right. */
+const FACINGS = ['front', 'back', 'left', 'right'];
 
 /** 🎞️ Длительность одного кадра в секундах для каждого состояния. */
 const FRAME_TIME = {

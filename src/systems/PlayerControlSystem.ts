@@ -1,4 +1,4 @@
-import { InputComponent, VelocityComponent, TransformComponent, SizeComponent, AnimationComponent, AnimationDefinitionComponent } from '../components';
+import { InputComponent, VelocityComponent, TransformComponent, SizeComponent, AnimationComponent, AnimationDefinitionComponent, type Facing } from '../components';
 import { System, World } from '../core/ecs';
 import { KeyBindings } from '../core/input/KeyBindings';
 import { CollisionGrid } from '../map/CollisionGrid';
@@ -71,6 +71,22 @@ export class PlayerControlSystem extends System {
       const len = Math.hypot(dx, dy);
       const sprint = this.bindings.isActive(input.keys, 'sprint') ? this.runMultiplier : 1;
       const effectiveSpeed = this.speed * sprint;
+
+      // 2.5️⃣ Update facing по нажатым клавишам (надёжнее чем velocity direction).
+      //    Приоритет для диагоналей: вертикаль (вверх/вниз) > горизонталь.
+      //    Если ничего не нажато — facing остаётся прежним (idle сохраняет последнее направление).
+      if (anim && len > 0) {
+        let newFacing: Facing | null = null;
+        if (dy < 0) newFacing = 'back';
+        else if (dy > 0) newFacing = 'front';
+        else if (dx < 0) newFacing = 'left';
+        else if (dx > 0) newFacing = 'right';
+        if (newFacing !== null && newFacing !== anim.facing) {
+          anim.facing = newFacing;
+          // Перезагрузить кадры сразу — без ожидания AnimationSystem
+          anim.refreshFrames(animDef!);
+        }
+      }
 
       if (len > 0) {
         velocity.vx = (dx / len) * effectiveSpeed;

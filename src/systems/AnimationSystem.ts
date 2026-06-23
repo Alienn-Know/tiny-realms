@@ -1,26 +1,6 @@
-import { InputComponent, VelocityComponent, AnimationComponent, AnimationDefinitionComponent, type Facing } from '../components';
+import { InputComponent, VelocityComponent, AnimationComponent, AnimationDefinitionComponent } from '../components';
 import { System, World } from '../core/ecs';
 import { KeyBindings } from '../core/input/KeyBindings';
-
-/**
- * 🧭 Определяет направление entity по вектору скорости.
- *
- * Приоритет для 4-direction top-down:
- * - `vy < 0` → `'back'` (движение от камеры, вверх по экрану)
- * - `vy > 0` → `'front'` (движение к камере, вниз по экрану)
- * - `vx < 0` → `'left'`
- * - `vx > 0` → `'right'`
- *
- * Диагональные направления (vx≠0 и vy≠0) разрешаются по приоритету Y > X.
- * @returns направление или `null`, если скорость нулевая
- */
-function facingFromVelocity(vx: number, vy: number): Facing | null {
-  if (vy < 0) return 'back';
-  if (vy > 0) return 'front';
-  if (vx < 0) return 'left';
-  if (vx > 0) return 'right';
-  return null;
-}
 
 /**
  * 🎬 Управляет анимациями сущностей.
@@ -31,8 +11,10 @@ function facingFromVelocity(vx: number, vy: number): Facing | null {
  *    - `velocity == 0` → `'idle'`
  *    - `velocity > 0` + `Shift` → `'run'`
  *    - `velocity > 0` (без Shift) → `'walk'`
- * 3. Обновляет `facing` по направлению движения.
- * 4. Продвигает кадры через `AnimationComponent.update`.
+ * 3. Продвигает кадры через `AnimationComponent.update`.
+ *
+ * `facing` обновляется в `PlayerControlSystem` по нажатым клавишам (надёжнее,
+ * чем по направлению velocity — диагонали разрешаются по активной оси).
  *
  * Применяется к entity с `AnimationComponent + AnimationDefinitionComponent
  * + VelocityComponent + InputComponent`.
@@ -81,17 +63,9 @@ export class AnimationSystem extends System {
         if (anim.currentState !== desired) {
           anim.setState(desired, def);
         }
-
-        // 3️⃣ Facing update (только при движении)
-        const newFacing = facingFromVelocity(vel.vx, vel.vy);
-        if (newFacing !== null && newFacing !== anim.facing) {
-          anim.facing = newFacing;
-          // Перезагрузить кадры для нового направления
-          anim.refreshFrames(def);
-        }
       }
 
-      // 4️⃣ Frame advancement
+      // 3️⃣ Frame advancement
       anim.update(def, dt);
     }
   }
