@@ -1,5 +1,5 @@
 import { Container } from 'pixi.js';
-import { CameraComponent, SpriteComponent, TileMapComponent } from './components';
+import { CameraComponent, SpriteComponent, TileMapComponent, TransformComponent } from './components';
 import { World, type Entity } from './core/ecs';
 import { GameLoop } from './core/loop/GameLoop';
 import { createApp } from './app/bootstrap';
@@ -50,11 +50,31 @@ const tileMapComp = new TileMapComponent(mapData);
 world.addComponent(tilemapEntity, tileMapComp);
 worldContainer.addChild(tileMapComp.container);
 
-// 🛡️ Collision (in-memory: тайлы + AABB объектов)
-const worldWidthPx = mapData.width * mapData.tileWidth;
-const worldHeightPx = mapData.height * mapData.tileHeight;
-const worldOriginX = mapData.offsetX;
-const worldOriginY = mapData.offsetY;
+// 🛡️ Collision (in-memory: тайлы + AABB объектов).
+// Для infinite map: `mapData.width/height` это размер per-chunk, реальный
+// world bounding box считаем из всех tile layers (min/max chunk coords).
+let worldMinX = mapData.offsetX;
+let worldMinY = mapData.offsetY;
+let worldMaxX = worldMinX + mapData.width * mapData.tileWidth;
+let worldMaxY = worldMinY + mapData.height * mapData.tileHeight;
+if (mapData.infinite) {
+  let minCx = Infinity, minCy = Infinity, maxCx = -Infinity, maxCy = -Infinity;
+  for (const layer of mapData.tileLayers) {
+    const left = layer.chunkOffsetX * mapData.tileWidth;
+    const top = layer.chunkOffsetY * mapData.tileHeight;
+    const right = (layer.chunkOffsetX + layer.width) * mapData.tileWidth;
+    const bottom = (layer.chunkOffsetY + layer.height) * mapData.tileHeight;
+    if (left < minCx) minCx = left;
+    if (top < minCy) minCy = top;
+    if (right > maxCx) maxCx = right;
+    if (bottom > maxCy) maxCy = bottom;
+  }
+  if (minCx !== Infinity) { worldMinX = minCx; worldMinY = minCy; worldMaxX = maxCx; worldMaxY = maxCy; }
+}
+const worldWidthPx = worldMaxX - worldMinX;
+const worldHeightPx = worldMaxY - worldMinY;
+const worldOriginX = worldMinX;
+const worldOriginY = worldMinY;
 const collision = new CollisionGrid(world, tilemapEntity, worldOriginX, worldOriginY, worldWidthPx, worldHeightPx);
 
 // 🎮 Спавн сущностей из Tiled object layer
@@ -70,12 +90,24 @@ const player: Entity = ObjectSpawner.spawnAll({
 
 worldContainer.addChild(world.getComponent(player, SpriteComponent)!.view);
 
+// 🎯 Переопределяем spawn-позицию: внизу по центру карты.
+// Tiled player_spawn может стоять где угодно (часто за пределами тайлов),
+// здесь ставим player в контролируемое место — низ + центр width.
+const playerTransform = world.getComponent(player, TransformComponent)!;
+const SPAWN_OFFSET_Y = 48; // px вверх от нижнего края
+playerTransform.x = worldOriginX + worldWidthPx / 2;
+playerTransform.y = worldMaxY - SPAWN_OFFSET_Y;
+playerTransform.renderX = playerTransform.x;
+playerTransform.renderY = playerTransform.y;
+
 // 🕹️ Игровые системы
+const playerControl = new PlayerControlSystem(140, collision);
+playerControl.setWorldBounds(worldOriginX, worldOriginY, worldMaxX, worldMaxY);
 world.addSystem(new InputSystem());
 world.addSystem(new TileMapRenderSystem());
 world.addSystem(new TileAnimationSystem());
 world.addSystem(new ImageLayerRenderSystem(worldContainer, mapData));
-world.addSystem(new PlayerControlSystem(140, collision));
+world.addSystem(playerControl);
 world.addSystem(new MovementSystem());
 world.addSystem(new AnimationSystem());
 world.addSystem(new CameraInputSystem());
@@ -109,8 +141,8 @@ cameraComp.zoomOvershoot = 0.2;
 cameraComp.zoomHoldTime = 0.5;
 cameraComp.worldMinX = worldOriginX;
 cameraComp.worldMinY = worldOriginY;
-cameraComp.worldMaxX = worldOriginX + worldWidthPx;
-cameraComp.worldMaxY = worldOriginY + worldHeightPx;
+cameraComp.worldMaxX = worldMaxX;
+cameraComp.worldMaxY = worldMaxY;
 world.addComponent(camera, cameraComp);
 
 app.renderer.on('resize', () => {
