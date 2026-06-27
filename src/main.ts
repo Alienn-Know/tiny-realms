@@ -1,5 +1,4 @@
-import { Assets, Container } from 'pixi.js';
-import { TiledMap, type TiledMapAsset } from 'pixi-tiledmap';
+import { Container } from 'pixi.js';
 import { CameraComponent, SpriteComponent, TransformComponent } from './components';
 import { World } from './core/ecs';
 import { GameLoop } from './core/loop/GameLoop';
@@ -18,6 +17,7 @@ import {
   TouchCameraInputSystem,
 } from './systems';
 import { CollisionGrid } from './map/CollisionGrid';
+import { loadTiledMap } from './map/MapLoader';
 import { ObjectSpawner } from './map/ObjectSpawner';
 
 const app = await createApp(document.body);
@@ -30,13 +30,12 @@ const config = await AssetsManager.loadConfig();
 await AssetsManager.init(config);
 await AssetsManager.loadAll((p) => loadingScreen.setProgress(p * 0.6));
 
-// 🗺️ Загружаем тайлмап через Pixi Assets (loader extension из pixi-tiledmap).
-//    .json / .tmj → JSON, .tmx → XML (loader авто-определяет по расширению).
+// 🗺️ Загружаем тайлмап через свой `loadTiledMap` (URL-safe resolution для tilesets).
+//    Не используем `tiledMapLoader` extension — он склеивает URL через `path.join`,
+//    что ломается при leading-`/` путях от Tiled Editor.
 const tilemapCfg = config.tilemaps.find((t) => t.name === 'temple') ?? config.tilemaps[0];
 if (!tilemapCfg) throw new Error('[main] load-config.json has no tilemaps');
-const mapAsset: TiledMapAsset = await Assets.load(tilemapCfg.path);
-const tiledMap = new TiledMap(mapAsset.mapData);
-const mapData = mapAsset.mapData;
+const { mapData, container: tiledMap } = await loadTiledMap(tilemapCfg.path);
 loadingScreen.setProgress(0.8);
 
 // 🌍 World container — все игровые объекты
