@@ -69,7 +69,7 @@
   "tilemaps": [
     {
       "name": "level1",
-      "path": "maps/level1.json",
+      "path": "maps/level1.tmj",
       "format": "json",
       "tileLayers": ["ground"],
       "objectLayers": ["entities"],
@@ -82,7 +82,7 @@
     },
     {
       "name": "temple",
-      "path": "maps/Ruined_temple_exterior.json",
+      "path": "maps/Ruined_temple_exterior.tmj",
       "format": "json",
       "tileLayers": [
         "water",
