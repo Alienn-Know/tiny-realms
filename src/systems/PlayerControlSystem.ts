@@ -38,32 +38,12 @@ export class PlayerControlSystem extends System {
    * @param bindings - опционально (default: WASD + стрелки + Space/Shift)
    * @param runMultiplier - множитель скорости при Shift (default 1.5)
    */
-  /** 🗺️ World bounds (min/max corners в мировых координатах). Опционально. */
-  private worldMinX = -Infinity;
-  private worldMinY = -Infinity;
-  private worldMaxX = Infinity;
-  private worldMaxY = Infinity;
-
   constructor(speed: number, collision: CollisionGrid, bindings?: KeyBindings, runMultiplier = 1.5) {
     super();
     this.speed = speed;
     this.collision = collision;
     this.bindings = bindings ?? new KeyBindings();
     this.runMultiplier = runMultiplier;
-  }
-
-  /**
-   * 🗺️ Установить границы мира для clamp'а player'а.
-   * @param minX - левый край мира
-   * @param minY - верхний край мира
-   * @param maxX - правый край мира
-   * @param maxY - нижний край мира
-   */
-  setWorldBounds(minX: number, minY: number, maxX: number, maxY: number): void {
-    this.worldMinX = minX;
-    this.worldMinY = minY;
-    this.worldMaxX = maxX;
-    this.worldMaxY = maxY;
   }
 
   update(world: World, dt: number): void {
@@ -133,18 +113,6 @@ export class PlayerControlSystem extends System {
       } else {
         velocity.vy = 0; // упёрся в стену по Y
       }
-
-      // 4️⃣ World bounds clamp (не даём игроку выйти за границы карты).
-      //    AABB учитывает половины ширины/высоты, чтобы player не "выглядывал"
-      //    за край ни на пиксель.
-      const minBoundX = this.worldMinX + size.halfWidth;
-      const maxBoundX = this.worldMaxX - size.halfWidth;
-      const minBoundY = this.worldMinY + size.halfHeight;
-      const maxBoundY = this.worldMaxY - size.halfHeight;
-      if (transform.x < minBoundX) { transform.x = minBoundX; velocity.vx = 0; }
-      else if (transform.x > maxBoundX) { transform.x = maxBoundX; velocity.vx = 0; }
-      if (transform.y < minBoundY) { transform.y = minBoundY; velocity.vy = 0; }
-      else if (transform.y > maxBoundY) { transform.y = maxBoundY; velocity.vy = 0; }
     }
   }
 }

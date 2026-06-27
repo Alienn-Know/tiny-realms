@@ -115,6 +115,13 @@ export class TiledMapLoader {
       }
     }
 
+    // 🎯 5.5️⃣ Tight bbox по реальным ненулевым тайлам (универсально для любых форм карт)
+    const tight = TiledMapLoader.#computeTightBounds(
+      tileLayers,
+      json.tilewidth,
+      json.tileheight,
+    );
+
     // 7️⃣+8️⃣ Collect objects from objectgroup layers (recursive) + resolve templates
     const rawObjects = TiledMapLoader.#collectObjects(json.layers, config.objectLayers);
     const objects = await resolveAllTemplates(config.path, rawObjects);
@@ -140,6 +147,10 @@ export class TiledMapLoader {
       infinite: json.infinite ?? false,
       offsetX: mapOffsetX,
       offsetY: mapOffsetY,
+      tightMinX: tight.minX,
+      tightMinY: tight.minY,
+      tightMaxX: tight.maxX,
+      tightMaxY: tight.maxY,
       parallaxOriginX: json.parallaxoriginx ?? 0,
       parallaxOriginY: json.parallaxoriginy ?? 0,
       tileLayers,
@@ -285,6 +296,65 @@ export class TiledMapLoader {
       map.set(tile.id, tile.objectgroup.objects);
     }
     return map;
+  }
+
+  /** 🎯 Вычислить tight bounding box (в пикселях) по реальным ненулевым тайлам всех слоёв.
+   *
+   * Работает для карт любой формы: круг, коридор, змейка, L-shape, крест и т.д.
+   * Игнорирует пустые тайлы (`gid === 0`) — bbox охватывает только нарисованный контент.
+   *
+   * ⚠️ `chunkOffsetX/Y` — это **абсолютные тайловые координаты** в мире (для infinite maps)
+   * или `0` (для finite). Поэтому layer origin = `chunkOffsetX/Y * tileSize`, без `mapOffsetX/Y`
+   * (тот уже учтён внутри chunks).
+   *
+   * @param layers - все tile layers карты
+   * @param tileWidth - размер тайла в px
+   * @param tileHeight - размер тайла в px
+   * @returns bbox в пикселях (max — exclusive)
+   */
+  static #computeTightBounds(
+    layers: TileLayerData[],
+    tileWidth: number,
+    tileHeight: number,
+  ): { minX: number; minY: number; maxX: number; maxY: number } {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let hasAny = false;
+
+    for (const layer of layers) {
+      // Мировые координаты origin слоя: chunkOffset в тайлах * tileSize + mapOffset
+      const layerOriginX = layer.chunkOffsetX * tileWidth;
+      const layerOriginY = layer.chunkOffsetY * tileHeight;
+
+      for (let y = 0; y < layer.height; y++) {
+        for (let x = 0; x < layer.width; x++) {
+          const idx = y * layer.width + x;
+          if (layer.data[idx] === 0) continue; // пустой тайл — игнорируем
+
+          hasAny = true;
+          const px = layerOriginX + x * tileWidth;
+          const py = layerOriginY + y * tileHeight;
+          if (px < minX) minX = px;
+          if (py < minY) minY = py;
+          if (px + tileWidth > maxX) maxX = px + tileWidth;
+          if (py + tileHeight > maxY) maxY = py + tileHeight;
+        }
+      }
+    }
+
+    // ⚠️ Fallback: если вся карта пустая — вернуть bbox по декларации первого слоя
+    if (!hasAny) {
+      const first = layers[0];
+      return {
+        minX: 0,
+        minY: 0,
+        maxX: 1 + (first?.width ?? 0) * tileWidth,
+        maxY: 1 + (first?.height ?? 0) * tileHeight,
+      };
+    }
+    return { minX, minY, maxX, maxY };
   }
 
   // ── private: layer decoding ───────────────────────────────────────────

@@ -139,6 +139,15 @@ export type MapData = {
   offsetX: number;
   /** ↕️ Глобальное смещение карты в пикселях. */
   offsetY: number;
+  /** 🎯 Tight bounding box (в пикселях) по реальным ненулевым тайлам всех слоёв.
+   *  Работает для любых форм карты (круг, коридор, змейка, L-shape и т.д.). */
+  tightMinX: number;
+  /** ↕️ Tight bbox по Y (верх). */
+  tightMinY: number;
+  /** ↔️ Tight bbox по X (правый край, exclusive). */
+  tightMaxX: number;
+  /** ↕️ Tight bbox по Y (низ, exclusive). */
+  tightMaxY: number;
   /** 📷 Parallax origin (since 1.8). */
   parallaxOriginX: number;
   parallaxOriginY: number;

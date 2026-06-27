@@ -55,8 +55,8 @@ worldContainer.addChild(tileMapComp.container);
 // world bounding box считаем из всех tile layers (min/max chunk coords).
 let worldMinX = mapData.offsetX;
 let worldMinY = mapData.offsetY;
-let worldMaxX = worldMinX + mapData.width * mapData.tileWidth;
-let worldMaxY = worldMinY + mapData.height * mapData.tileHeight;
+let worldMaxX = worldMinX + mapData.width * mapData.tileWidth;   // 0 + 16 * 16
+let worldMaxY = worldMinY + mapData.height * mapData.tileHeight; // 0 + 24 * 16
 if (mapData.infinite) {
   let minCx = Infinity, minCy = Infinity, maxCx = -Infinity, maxCy = -Infinity;
   for (const layer of mapData.tileLayers) {
@@ -102,7 +102,6 @@ playerTransform.renderY = playerTransform.y;
 
 // 🕹️ Игровые системы
 const playerControl = new PlayerControlSystem(140, collision);
-playerControl.setWorldBounds(worldOriginX, worldOriginY, worldMaxX, worldMaxY);
 world.addSystem(new InputSystem());
 world.addSystem(new TileMapRenderSystem());
 world.addSystem(new TileAnimationSystem());
