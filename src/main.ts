@@ -1,6 +1,7 @@
-import { Container } from 'pixi.js';
-import { CameraComponent, SpriteComponent, TileMapComponent, TransformComponent } from './components';
-import { World, type Entity } from './core/ecs';
+import { Assets, Container } from 'pixi.js';
+import { TiledMap, type TiledMapAsset } from 'pixi-tiledmap';
+import { CameraComponent, SpriteComponent, TransformComponent } from './components';
+import { World } from './core/ecs';
 import { GameLoop } from './core/loop/GameLoop';
 import { createApp } from './app/bootstrap';
 import { AssetsManager } from './core/assets';
@@ -10,18 +11,14 @@ import {
   CameraInputSystem,
   CameraRenderSystem,
   CameraSystem,
-  ImageLayerRenderSystem,
   InputSystem,
   MovementSystem,
   PlayerControlSystem,
   RenderSystem,
-  TileMapRenderSystem,
   TouchCameraInputSystem,
 } from './systems';
-import { TiledMapLoader } from './map/TiledMapLoader';
 import { CollisionGrid } from './map/CollisionGrid';
 import { ObjectSpawner } from './map/ObjectSpawner';
-import { TileAnimationSystem } from './map/TileAnimationSystem';
 
 const app = await createApp(document.body);
 
@@ -33,10 +30,13 @@ const config = await AssetsManager.loadConfig();
 await AssetsManager.init(config);
 await AssetsManager.loadAll((p) => loadingScreen.setProgress(p * 0.6));
 
-// 🗺️ Загружаем тайлмап (v1 — single-map, берём по имени)
+// 🗺️ Загружаем тайлмап через Pixi Assets (loader extension из pixi-tiledmap).
+//    .json / .tmj → JSON, .tmx → XML (loader авто-определяет по расширению).
 const tilemapCfg = config.tilemaps.find((t) => t.name === 'temple') ?? config.tilemaps[0];
 if (!tilemapCfg) throw new Error('[main] load-config.json has no tilemaps');
-const mapData = await TiledMapLoader.load(tilemapCfg, config.bundles, () => {});
+const mapAsset: TiledMapAsset = await Assets.load(tilemapCfg.path);
+const tiledMap = new TiledMap(mapAsset.mapData);
+const mapData = mapAsset.mapData;
 loadingScreen.setProgress(0.8);
 
 // 🌍 World container — все игровые объекты
@@ -44,75 +44,38 @@ const world = new World();
 const worldContainer = new Container();
 app.stage.addChild(worldContainer);
 
-// 🗺️ Тайлмап как ECS-компонент
-const tilemapEntity: Entity = world.createEntity();
-const tileMapComp = new TileMapComponent(mapData);
-world.addComponent(tilemapEntity, tileMapComp);
-worldContainer.addChild(tileMapComp.container);
+// 🗺️ Тайлмап (rendering — внутри pixi-tiledmap; packed mesh + image layers)
+worldContainer.addChild(tiledMap);
 
 // 🛡️ Collision (in-memory: тайлы + AABB объектов).
-// Для infinite map: `mapData.width/height` это размер per-chunk, реальный
-// world bounding box считаем из всех tile layers (min/max chunk coords).
-let worldMinX = mapData.offsetX;
-let worldMinY = mapData.offsetY;
-let worldMaxX = worldMinX + mapData.width * mapData.tileWidth;   // 0 + 16 * 16
-let worldMaxY = worldMinY + mapData.height * mapData.tileHeight; // 0 + 24 * 16
-if (mapData.infinite) {
-  let minCx = Infinity, minCy = Infinity, maxCx = -Infinity, maxCy = -Infinity;
-  for (const layer of mapData.tileLayers) {
-    const left = layer.chunkOffsetX * mapData.tileWidth;
-    const top = layer.chunkOffsetY * mapData.tileHeight;
-    const right = (layer.chunkOffsetX + layer.width) * mapData.tileWidth;
-    const bottom = (layer.chunkOffsetY + layer.height) * mapData.tileHeight;
-    if (left < minCx) minCx = left;
-    if (top < minCy) minCy = top;
-    if (right > maxCx) maxCx = right;
-    if (bottom > maxCy) maxCy = bottom;
-  }
-  if (minCx !== Infinity) { worldMinX = minCx; worldMinY = minCy; worldMaxX = maxCx; worldMaxY = maxCy; }
-}
-const worldWidthPx = worldMaxX - worldMinX;
-const worldHeightPx = worldMaxY - worldMinY;
-const worldOriginX = worldMinX;
-const worldOriginY = worldMinY;
-const collision = new CollisionGrid(world, tilemapEntity, worldOriginX, worldOriginY, worldWidthPx, worldHeightPx);
+const collision = new CollisionGrid(mapData, 'walkable');
 
 // 🎮 Спавн сущностей из Tiled object layer
-const player: Entity = ObjectSpawner.spawnAll({
+const player = ObjectSpawner.spawnAll({
   world,
   worldContainer,
-  mapData,
+  resolvedMap: mapData,
+  tileSetRenderers: tiledMap.tileSetRenderers,
   collision,
-  tilemapEntity,
   tilemapConfig: tilemapCfg,
   textures: AssetsManager.getAllTextures(),
-}) ?? (() => { throw new Error(`[main] No player_spawn in ${tilemapCfg.path}`); })();
+});
+
+if (player === null) {
+  throw new Error(`[main] No player_spawn in ${tilemapCfg.path}`);
+}
 
 worldContainer.addChild(world.getComponent(player, SpriteComponent)!.view);
 
-// 🎯 Переопределяем spawn-позицию: внизу по центру карты.
-// Tiled player_spawn может стоять где угодно (часто за пределами тайлов),
-// здесь ставим player в контролируемое место — низ + центр width.
-const playerTransform = world.getComponent(player, TransformComponent)!;
-const SPAWN_OFFSET_Y = 48; // px вверх от нижнего края
-playerTransform.x = worldOriginX + worldWidthPx / 2;
-playerTransform.y = worldMaxY - SPAWN_OFFSET_Y;
-playerTransform.renderX = playerTransform.x;
-playerTransform.renderY = playerTransform.y;
-
 // 🕹️ Игровые системы
-const playerControl = new PlayerControlSystem(140, collision);
 world.addSystem(new InputSystem());
-world.addSystem(new TileMapRenderSystem());
-world.addSystem(new TileAnimationSystem());
-world.addSystem(new ImageLayerRenderSystem(worldContainer, mapData));
-world.addSystem(playerControl);
+world.addSystem(new PlayerControlSystem(140, collision));
 world.addSystem(new MovementSystem());
 world.addSystem(new AnimationSystem());
 world.addSystem(new CameraInputSystem());
 world.addSystem(new TouchCameraInputSystem());
 world.addSystem(new CameraSystem());
-world.addSystem(new CameraRenderSystem(worldContainer));
+world.addSystem(new CameraRenderSystem(worldContainer, tiledMap));
 world.addSystem(new RenderSystem());
 
 loadingScreen.setProgress(1);
@@ -125,9 +88,44 @@ cameraComp.viewportHeight = app.screen.height;
 cameraComp.target = player;
 cameraComp.minZoom = 0.2;
 cameraComp.maxZoom = 4;
-// 🎯 Центрируем камеру на центре текущих тайлов (с учётом смещения infinite map)
-cameraComp.x = worldOriginX + worldWidthPx / 2;
-cameraComp.y = worldOriginY + worldHeightPx / 2;
+
+// 🗺️ World bounds: finite — декларация, infinite — bbox по chunks
+const worldMinX = 0;
+const worldMinY = 0;
+let worldMaxX = mapData.width * mapData.tilewidth;
+let worldMaxY = mapData.height * mapData.tileheight;
+if (mapData.infinite) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const layer of mapData.layers) {
+    if (layer.type !== 'tilelayer' || !layer.chunks) continue;
+    for (const c of layer.chunks) {
+      const lx = c.x * mapData.tilewidth;
+      const ly = c.y * mapData.tileheight;
+      const rx = (c.x + c.width) * mapData.tilewidth;
+      const ry = (c.y + c.height) * mapData.tileheight;
+      if (lx < minX) minX = lx;
+      if (ly < minY) minY = ly;
+      if (rx > maxX) maxX = rx;
+      if (ry > maxY) maxY = ry;
+    }
+  }
+  if (minX !== Infinity) {
+    worldMaxX = maxX - minX;
+    worldMaxY = maxY - minY;
+  }
+}
+const worldWidthPx = worldMaxX;
+const worldHeightPx = worldMaxY;
+
+// 🎯 Player spawn: берём из Tiled player_spawn объекта (ObjectSpawner уже выставил transform).
+//    ObjectSpawner ставит transform в центр объекта; renderX/renderY интерполяция стартует оттуда.
+const playerTransform = world.getComponent(player, TransformComponent)!;
+playerTransform.renderX = playerTransform.x;
+playerTransform.renderY = playerTransform.y;
+
+// 🎯 Центрируем камеру на центре карты (с учётом смещения infinite map)
+cameraComp.x = worldMinX + worldWidthPx / 2;
+cameraComp.y = worldMinY + worldHeightPx / 2;
 // Зум: если карта меньше вьюпорта — fit-to-screen, иначе читаемый 1.5x
 const fitZoom = Math.min(
   app.screen.width / worldWidthPx,
@@ -138,8 +136,8 @@ cameraComp.zoom = initialZoom;
 cameraComp.zoomRest = initialZoom;
 cameraComp.zoomOvershoot = 0.2;
 cameraComp.zoomHoldTime = 0.5;
-cameraComp.worldMinX = worldOriginX;
-cameraComp.worldMinY = worldOriginY;
+cameraComp.worldMinX = worldMinX;
+cameraComp.worldMinY = worldMinY;
 cameraComp.worldMaxX = worldMaxX;
 cameraComp.worldMaxY = worldMaxY;
 world.addComponent(camera, cameraComp);

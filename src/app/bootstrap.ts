@@ -1,4 +1,7 @@
-import {Application, TextureStyle} from 'pixi.js';
+import {Application, extensions, TextureStyle} from 'pixi.js';
+import { tiledMapLoader } from 'pixi-tiledmap';
+
+let tiledExtensionRegistered = false;
 
 export async function createApp(container: HTMLElement): Promise<Application> {
   const app = new Application();
@@ -12,6 +15,11 @@ export async function createApp(container: HTMLElement): Promise<Application> {
     resolution: window.devicePixelRatio || 1,
     autoDensity: true,
   });
+
+  if (!tiledExtensionRegistered) {
+    extensions.add(tiledMapLoader);
+    tiledExtensionRegistered = true;
+  }
 
   container.appendChild(app.canvas);
   app.ticker.stop();

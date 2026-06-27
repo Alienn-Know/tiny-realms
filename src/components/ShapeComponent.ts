@@ -1,5 +1,5 @@
 import { Component } from '../core/ecs';
-import type { TiledPoint } from '../map/TiledTypes';
+import type { TiledPoint } from 'pixi-tiledmap';
 
 /**
  * 📐 ShapeComponent — хранит геометрическую форму Tiled-объекта.

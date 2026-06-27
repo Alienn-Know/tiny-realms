@@ -1,4 +1,14 @@
-import { AnimatedSprite, Container, Sprite, Text, TextStyle, type Spritesheet, type Texture } from 'pixi.js';
+import { AnimatedSprite, Sprite, Text, TextStyle, Texture, type Spritesheet } from 'pixi.js';
+import {
+  type ResolvedMap,
+  type ResolvedObject,
+  type ResolvedObjectLayer,
+  type ResolvedTile,
+  type TiledPoint,
+  type TiledProperty,
+  type TiledText,
+  TileSetRenderer,
+} from 'pixi-tiledmap';
 import { World, type Entity } from '../core/ecs';
 import { AnimationComponent } from '../components/AnimationComponent';
 import { AnimationDefinitionComponent, type AnimationDef, type Facing, type FacingFrames } from '../components/AnimationDefinitionComponent';
@@ -10,23 +20,19 @@ import { TransformComponent } from '../components/TransformComponent';
 import { VelocityComponent } from '../components/VelocityComponent';
 import { SizeComponent } from '../components/SizeComponent';
 import { CollisionGrid } from './CollisionGrid';
-import { TiledMapLoader } from './TiledMapLoader';
-import type { MapData } from './MapData';
-import type { TiledObject, TiledProperty, TiledText } from './TiledTypes';
 import type { TilemapConfig } from '../core/assets/AssetsConfig';
-import { decodeGid } from './utils/gid';
 
 /**
  * 🎮 Контекст для ObjectSpawner — всё, что handler'у нужно для спавна.
  */
 export type SpawnContext = {
   world: World;
-  worldContainer: Container;
-  mapData: MapData;
+  worldContainer: import('pixi.js').Container;
+  resolvedMap: ResolvedMap;
+  tileSetRenderers: TileSetRenderer[];
   collision: CollisionGrid;
-  tilemapEntity: Entity;
   tilemapConfig: TilemapConfig;
-  /** 🖼️ alias → Texture (из AssetsManager — для non-tile объектов). */
+  /** 🖼️ alias → Texture | Spritesheet (из AssetsManager — для non-tile объектов). */
   textures: Record<string, unknown>;
 };
 
@@ -34,26 +40,33 @@ export type SpawnContext = {
  * 👤 ObjectSpawner — generic спавнер сущностей из Tiled object layer.
  *
  * Поддерживает:
- * - Rectangle objects (текущая логика, через `objectTypes` mapping)
- * - Tile objects (`obj.gid` — текстура из resolved tileset)
+ * - Rectangle objects (через `objectTypes` mapping)
+ * - Tile objects (`obj.tile` — текстура из resolved tileset, вырезанная по `localId`)
  * - Shape objects (point/ellipse/polygon/polyline/capsule → `ShapeComponent`)
  * - Text objects (Pixi `Text` вместо `Sprite`)
- * - Templates (уже материализованы в `TiledMapLoader`)
+ *
+ * Object templates уже материализованы в `ResolvedObject` самой pixi-tiledmap.
  */
 export class ObjectSpawner {
-  /** 🎬 Спавнит все объекты из `mapData.objects`. Возвращает id player (или null). */
+  /** 🎬 Спавнит все объекты из указанных object-слоёв. Возвращает id player (или null). */
   static spawnAll(ctx: SpawnContext): Entity | null {
     let playerId: Entity | null = null;
+    const allowed = ctx.tilemapConfig.objectLayers;
 
-    for (const obj of ctx.mapData.objects) {
-      const id = ObjectSpawner.#spawnOne(ctx, obj);
-      if (id < 0) continue;
-      const alias = ctx.tilemapConfig.objectTypes[obj.type ?? ''];
-      if (obj.type === 'player_spawn' || alias === 'player') {
-        if (playerId !== null) {
-          console.warn('[ObjectSpawner] Multiple player_spawn, using first');
-        } else {
-          playerId = id;
+    for (const layer of ctx.resolvedMap.layers) {
+      if (layer.type !== 'objectgroup') continue;
+      if (allowed.length > 0 && !allowed.includes(layer.name)) continue;
+
+      for (const obj of layer.objects) {
+        const id = ObjectSpawner.#spawnOne(ctx, layer, obj);
+        if (id < 0) continue;
+        const alias = ctx.tilemapConfig.objectTypes[obj.type ?? ''];
+        if (obj.type === 'player_spawn' || alias === 'player') {
+          if (playerId !== null) {
+            console.warn('[ObjectSpawner] Multiple player_spawn, using first');
+          } else {
+            playerId = id;
+          }
         }
       }
     }
@@ -62,12 +75,16 @@ export class ObjectSpawner {
   }
 
   /** 🛠️ Спавн одного объекта. */
-  static #spawnOne(ctx: SpawnContext, obj: TiledObject): Entity {
+  static #spawnOne(
+    ctx: SpawnContext,
+    _layer: ResolvedObjectLayer,
+    obj: ResolvedObject,
+  ): Entity {
     // 1. Resolve alias (необязательно для tile/text/shape объектов)
     const alias = ctx.tilemapConfig.objectTypes[obj.type ?? ''];
 
     // 2. Resolve size
-    const tileSize = ctx.mapData.tileWidth;
+    const tileSize = ctx.resolvedMap.tilewidth;
     let w = obj.width;
     let h = obj.height;
     if (w <= 0 || h <= 0) {
@@ -83,7 +100,7 @@ export class ObjectSpawner {
     // 3. Center position (Tiled origin = top-left → +w/2, +h/2)
     const cx = obj.x + w / 2;
     const cy = obj.y + h / 2;
-    const rotation = obj.rotation ? (obj.rotation * Math.PI) / 180 : 0;
+    const rotation = (obj.rotation * Math.PI) / 180;
 
     // 4. Create entity + transform
     const id = ctx.world.createEntity();
@@ -107,20 +124,10 @@ export class ObjectSpawner {
       return id;
     }
 
-    // 7. Tile object (gid) → текстура из resolved tileset
-    if (obj.gid) {
-      const decoded = decodeGid(obj.gid);
-      const resolved = TiledMapLoader.resolveGid(decoded.gid, ctx.mapData.tilesets);
-      if (resolved) {
-        const sprite = new Sprite(resolved.tileset.texture);
-        // TODO: вырезать конкретный кадр из тайлсета (по localId)
-        // Пока — используется вся текстура тайлсета. Для точного кадра нужен
-        // #createTileTexture из TileMapRenderSystem, но он приват.
-        // Fallback: если есть alias и текстура в ctx.textures — используем её
-        if (alias && ctx.textures[alias]) {
-          sprite.texture = ctx.textures[alias] as never;
-        }
-        ObjectSpawner.#applyGidFlip(sprite, decoded);
+    // 7. Tile object (obj.tile) → текстура из resolved tileset
+    if (obj.tile) {
+      const sprite = ObjectSpawner.#createTileObject(ctx, obj.tile);
+      if (sprite) {
         ctx.world.addComponent(id, new SpriteComponent(sprite));
         if (w > 0 && h > 0) {
           ctx.world.addComponent(id, new SizeComponent(w, h, true));
@@ -151,7 +158,7 @@ export class ObjectSpawner {
   }
 
   /** 🏁 Финализация спавна: InputComponent + properties + collision + animations (player). */
-  static #finalizeSpawn(ctx: SpawnContext, id: Entity, obj: TiledObject, alias: string | undefined): void {
+  static #finalizeSpawn(ctx: SpawnContext, id: Entity, obj: ResolvedObject, alias: string | undefined): void {
     // Player gets InputComponent + Animation + AnimationDefinition
     if (obj.type === 'player_spawn' || alias === 'player') {
       ctx.world.addComponent(id, new InputComponent());
@@ -167,7 +174,7 @@ export class ObjectSpawner {
     if (isSolid && w > 0 && h > 0) {
       const cx = obj.x + w / 2;
       const cy = obj.y + h / 2;
-      ctx.collision.addSolidBox(id, cx, cy, w, h);
+      ctx.collision.addSolidBox(entityKey(id), cx, cy, w, h);
     }
   }
 
@@ -264,7 +271,7 @@ export class ObjectSpawner {
   }
 
   /** 🏷️ Custom properties → PropertiesComponent. */
-  static #addProperties(ctx: SpawnContext, id: Entity, obj: TiledObject): void {
+  static #addProperties(ctx: SpawnContext, id: Entity, obj: ResolvedObject): void {
     if (obj.properties && obj.properties.length > 0) {
       const data = ObjectSpawner.#propertiesToObject(obj.properties);
       ctx.world.addComponent(id, new PropertiesComponent(data));
@@ -272,12 +279,11 @@ export class ObjectSpawner {
   }
 
   /** 📐 Извлечь ShapeData из объекта (если это shape-объект). */
-  static #extractShape(obj: TiledObject): ShapeData | null {
+  static #extractShape(obj: ResolvedObject): ShapeData | null {
     if (obj.point) return { kind: 'point' };
     if (obj.ellipse) return { kind: 'ellipse', width: obj.width, height: obj.height };
-    if (obj.capsule) return { kind: 'capsule', width: obj.width, height: obj.height };
-    if (obj.polygon && obj.polygon.length > 0) return { kind: 'polygon', points: obj.polygon };
-    if (obj.polyline && obj.polyline.length > 0) return { kind: 'polyline', points: obj.polyline };
+    if (obj.polygon && obj.polygon.length > 0) return { kind: 'polygon', points: obj.polygon as TiledPoint[] };
+    if (obj.polyline && obj.polyline.length > 0) return { kind: 'polyline', points: obj.polyline as TiledPoint[] };
     return null;
   }
 
@@ -302,13 +308,16 @@ export class ObjectSpawner {
   }
 
   /** 🔄 Применить flip-флаги gid к спрайту tile-объекта. */
-  static #applyGidFlip(
-    sprite: Sprite,
-    decoded: { hFlip: boolean; vFlip: boolean; diagRot: boolean },
-  ): void {
-    if (decoded.hFlip) sprite.scale.x = -1;
-    if (decoded.vFlip) sprite.scale.y = -1;
-    if (decoded.diagRot) sprite.rotation = -Math.PI / 2;
+  static #createTileObject(ctx: SpawnContext, tile: ResolvedTile): Sprite | null {
+    const tsRenderer = ctx.tileSetRenderers[tile.tilesetIndex];
+    if (!tsRenderer) return null;
+    const tex = tsRenderer.getTexture(tile.localId);
+    if (!tex) return null;
+    const sprite = new Sprite(tex);
+    if (tile.horizontalFlip) sprite.scale.x = -1;
+    if (tile.verticalFlip) sprite.scale.y = -1;
+    if (tile.diagonalFlip) sprite.rotation = -Math.PI / 2;
+    return sprite;
   }
 
   /** 📋 Tiled properties `[{name, type, value}]` → plain object. */
@@ -319,4 +328,15 @@ export class ObjectSpawner {
     }
     return out;
   }
+}
+
+/** 🔑 Стабильный ключ entity для CollisionGrid (entityId → symbol). */
+const entityKeys = new Map<Entity, symbol>();
+function entityKey(e: Entity): symbol {
+  let s = entityKeys.get(e);
+  if (!s) {
+    s = Symbol('entity');
+    entityKeys.set(e, s);
+  }
+  return s;
 }

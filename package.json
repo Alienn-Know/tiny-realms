@@ -13,6 +13,7 @@
     "vite": "^8.0.12"
   },
   "dependencies": {
+    "pixi-tiledmap": "^2.8.4",
     "pixi.js": "^8.19.0"
   }
 }

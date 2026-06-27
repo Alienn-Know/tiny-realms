@@ -6,6 +6,5 @@ export { PropertiesComponent } from './PropertiesComponent';
 export { ShapeComponent } from './ShapeComponent';
 export { SizeComponent } from './SizeComponent';
 export { SpriteComponent } from './SpriteComponent';
-export { TileMapComponent } from './TileMapComponent';
 export { TransformComponent } from './TransformComponent';
 export { VelocityComponent } from './VelocityComponent';

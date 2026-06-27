@@ -1,5 +1,5 @@
-import { World, type Entity } from '../core/ecs';
-import { TileMapComponent } from '../components/TileMapComponent';
+import type { ResolvedMap, ResolvedTileLayer } from 'pixi-tiledmap';
+import { buildWalkableByGid } from './WalkableResolver';
 
 /** 📦 AABB (axis-aligned bounding box) в мировых координатах. */
 export type AABB = { x: number; y: number; w: number; h: number };
@@ -7,89 +7,216 @@ export type AABB = { x: number; y: number; w: number; h: number };
 /**
  * 🛡️ CollisionGrid — проверка проходимости в мире.
  *
- * Хранит в памяти:
- * - `walkableByGid` в `TileMapComponent` (для тайлов)
- * - список solid AABB (для entity-объектов, зарегистрированных через `addSolidBox`)
+ * Работает поверх `ResolvedMap` из pixi-tiledmap. Хранит:
+ * - `walkableByGid` — lookup gid → walkable (из `WalkableResolver`).
+ * - Список `entityBoxes` — AABB solid-объектов (entity), зарегистрированных через `addSolidBox`.
  *
- * Query API:
- * - `isPositionWalkable(x, y)` — точка проходима? (тайл + worldBounds)
- * - `isBoxWalkable(x, y, w, h)` — AABB проходим? (5 точек corners+center + entity boxes)
+ * Проходимость тайла:
+ * - Точка проходима, если ВСЕ тайл-слои в этой точке проходимы (если хотя бы один
+ *   слой блокирует — точка заблокирована: поведение Tiled — walls поверх ground).
+ * - gid берётся без флагов трансформации (флаги не влияют на проходимость).
  *
- * Производительность v1: O(1) для точки, O(1) для AABB-проверки (5 точек + linear scan
- * по entity boxes). Spatial hash добавим когда entity boxes > 100.
+ * Мировые bounds:
+ * - finite: `0..width*tilewidth, 0..height*tileheight`.
+ * - infinite: bbox из chunks (`chunks[i].x/y/width/height` в тайлах).
+ *
+ * Производительность v1: O(L) на точку (L = кол-во tile layers), O(1) для AABB
+ * по 5 точкам + linear scan entity boxes. Spatial hash добавим при boxes > 100.
  */
 export class CollisionGrid {
-  #world: World;
-  #tilemapEntity: Entity;
-  #entityBoxes: Map<Entity, AABB> = new Map();
+  /** 🚶 gid (без flip-флагов) → walkable. */
+  #walkableByGid: Map<number, boolean>;
+
+  /** 📐 Мировой bbox карты (для ранних выходов). */
   #worldBounds: AABB;
 
-  constructor(world: World, tilemapEntity: Entity, originX: number, originY: number, worldWidth: number, worldHeight: number) {
-    this.#world = world;
-    this.#tilemapEntity = tilemapEntity;
-    this.#worldBounds = { x: originX, y: originY, w: worldWidth, h: worldHeight };
+  /** 📚 Кеш tile-слоёв (только top-level, не из group — group не используем). */
+  #tileLayers: ResolvedTileLayer[];
+
+  /** 📏 Размер тайла (px). */
+  #tileWidth: number;
+
+  /** 📏 Размер тайла (px). */
+  #tileHeight: number;
+
+  /** 🧊 Список твёрдых AABB (entity). */
+  #entityBoxes: Map<symbol, AABB> = new Map();
+
+  /**
+   * @param map - resolved map (после `parseMap` / `parseMapAsync`)
+   * @param propertyName - имя Tiled-property для walkable (default `'walkable'`)
+   */
+  constructor(map: ResolvedMap, propertyName = 'walkable') {
+    this.#walkableByGid = buildWalkableByGid(map, propertyName);
+    this.#tileWidth = map.tilewidth;
+    this.#tileHeight = map.tileheight;
+    this.#worldBounds = computeWorldBounds(map);
+    this.#tileLayers = collectTileLayers(map);
   }
 
-  /** ✅ Точка (px) проходима? (worldBounds + тайл) */
+  /** ✅ Точка (px) проходима? (worldBounds + все тайл-слои) */
   isPositionWalkable(x: number, y: number): boolean {
     if (!this.#inWorldBoundsPoint(x, y)) return false;
-    const tm = this.#getTileMap();
-    return tm.isWalkableAt(x, y);
+    if (!this.#inWorldBoundsPoint(x + 0.001, y + 0.001)) {
+      // граница inclusive-lower / exclusive-upper
+      return false;
+    }
+    const tx = Math.floor(x / this.#tileWidth);
+    const ty = Math.floor(y / this.#tileHeight);
+    return this.#isTileWalkable(tx, ty);
   }
 
   /** ✅ AABB проходим? (worldBounds + 5 точек тайла + entity boxes) */
   isBoxWalkable(x: number, y: number, w: number, h: number): boolean {
     if (!this.#inWorldBoundsBox(x, y, w, h)) return false;
-    const tm = this.#getTileMap();
-    // Проверяем 4 угла + центр (AABB-середины обычно достаточно)
-    if (!tm.isWalkableAt(x, y)) return false;
-    if (!tm.isWalkableAt(x + w, y)) return false;
-    if (!tm.isWalkableAt(x, y + h)) return false;
-    if (!tm.isWalkableAt(x + w, y + h)) return false;
-    if (!tm.isWalkableAt(x + w / 2, y + h / 2)) return false;
-    // Entity boxes (linear scan)
+
+    if (
+      !this.#isTileWalkable(Math.floor(x / this.#tileWidth), Math.floor(y / this.#tileHeight)) ||
+      !this.#isTileWalkable(Math.floor((x + w) / this.#tileWidth), Math.floor(y / this.#tileHeight)) ||
+      !this.#isTileWalkable(Math.floor(x / this.#tileWidth), Math.floor((y + h) / this.#tileHeight)) ||
+      !this.#isTileWalkable(Math.floor((x + w) / this.#tileWidth), Math.floor((y + h) / this.#tileHeight)) ||
+      !this.#isTileWalkable(Math.floor((x + w / 2) / this.#tileWidth), Math.floor((y + h / 2) / this.#tileHeight))
+    ) {
+      return false;
+    }
+
     const myBox: AABB = { x, y, w, h };
-    for (const [entity, box] of this.#entityBoxes) {
-      if (entity === this.#tilemapEntity) continue;
+    for (const box of this.#entityBoxes.values()) {
       if (this.#aabbIntersects(myBox, box)) return false;
     }
     return true;
   }
 
   /** ➕ Зарегистрировать твёрдый AABB (entity). */
-  addSolidBox(entity: Entity, x: number, y: number, w: number, h: number): void {
-    this.#entityBoxes.set(entity, { x, y, w, h });
+  addSolidBox(id: symbol, x: number, y: number, w: number, h: number): void {
+    this.#entityBoxes.set(id, { x, y, w, h });
   }
 
   /** ➖ Удалить твёрдый AABB. */
-  removeSolidBox(entity: Entity): void {
-    this.#entityBoxes.delete(entity);
+  removeSolidBox(id: symbol): void {
+    this.#entityBoxes.delete(id);
   }
 
   /** 📦 Получить все зарегистрированные solid boxes (для отладки). */
-  getSolidBoxes(): IterableIterator<[Entity, AABB]> {
+  getSolidBoxes(): IterableIterator<[symbol, AABB]> {
     return this.#entityBoxes.entries();
   }
 
   // ── private ─────────────────────────────────────────────────────────
 
-  #getTileMap(): TileMapComponent {
-    const tm = this.#world.getComponent(this.#tilemapEntity, TileMapComponent);
-    if (!tm) throw new Error('[CollisionGrid] TileMapComponent not found on tilemapEntity');
-    return tm;
+  #isTileWalkable(tx: number, ty: number): boolean {
+    // top-most non-empty gid приоритетен, но непроходимый тайл в ЛЮБОМ слое блокирует.
+    for (let i = this.#tileLayers.length - 1; i >= 0; i--) {
+      const layer = this.#tileLayers[i];
+      if (!layer.visible) continue;
+
+      const lt = pickLayerTile(layer, tx, ty);
+      if (lt === null) continue;
+
+      const gid = lt.gid;
+      if (gid === 0) continue;
+      return this.#walkableByGid.get(gid) ?? true;
+    }
+    return true; // все слои пусты — проходимо
   }
 
   #inWorldBoundsPoint(x: number, y: number): boolean {
-    return x >= this.#worldBounds.x && y >= this.#worldBounds.y && x < this.#worldBounds.x + this.#worldBounds.w && y < this.#worldBounds.y + this.#worldBounds.h;
+    const b = this.#worldBounds;
+    return x >= b.x && y >= b.y && x < b.x + b.w && y < b.y + b.h;
   }
 
   #inWorldBoundsBox(x: number, y: number, w: number, h: number): boolean {
-    return (
-      x >= this.#worldBounds.x && y >= this.#worldBounds.y && x + w <= this.#worldBounds.x + this.#worldBounds.w && y + h <= this.#worldBounds.y + this.#worldBounds.h
-    );
+    const b = this.#worldBounds;
+    return x >= b.x && y >= b.y && x + w <= b.x + b.w && y + h <= b.y + b.h;
   }
 
   #aabbIntersects(a: AABB, b: AABB): boolean {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
   }
+}
+
+// ── helpers ──────────────────────────────────────────────────────────
+
+/** 📐 Вычислить мировой bbox карты (px). */
+function computeWorldBounds(map: ResolvedMap): AABB {
+  if (!map.infinite) {
+    return {
+      x: 0,
+      y: 0,
+      w: map.width * map.tilewidth,
+      h: map.height * map.tileheight,
+    };
+  }
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const layer of collectTileLayers(map)) {
+    if (layer.chunks) {
+      for (const c of layer.chunks) {
+        const lx = c.x * map.tilewidth;
+        const ly = c.y * map.tileheight;
+        const rx = (c.x + c.width) * map.tilewidth;
+        const ry = (c.y + c.height) * map.tileheight;
+        if (lx < minX) minX = lx;
+        if (ly < minY) minY = ly;
+        if (rx > maxX) maxX = rx;
+        if (ry > maxY) maxY = ry;
+      }
+    } else {
+      const lx = 0;
+      const ly = 0;
+      const rx = layer.width * map.tilewidth;
+      const ry = layer.height * map.tileheight;
+      if (lx < minX) minX = lx;
+      if (ly < minY) minY = ly;
+      if (rx > maxX) maxX = rx;
+      if (ry > maxY) maxY = ry;
+    }
+  }
+  if (minX === Infinity) {
+    return { x: 0, y: 0, w: map.width * map.tilewidth, h: map.height * map.tileheight };
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
+/** 📚 Собрать все tile-слои (top-level, без recursion в group — group не используем). */
+function collectTileLayers(map: ResolvedMap): ResolvedTileLayer[] {
+  const out: ResolvedTileLayer[] = [];
+  for (const layer of map.layers) {
+    if (layer.type === 'tilelayer') out.push(layer);
+  }
+  return out;
+}
+
+/**
+ * 📌 Получить тайл из слоя в глобальных тайловых координатах.
+ * Возвращает `null` если координата вне слоя (включая chunks для infinite).
+ */
+function pickLayerTile(
+  layer: ResolvedTileLayer,
+  tx: number,
+  ty: number,
+): { gid: number; localId: number; tilesetIndex: number } | null {
+  if (!layer.infinite) {
+    if (tx < 0 || ty < 0 || tx >= layer.width || ty >= layer.height) return null;
+    const idx = ty * layer.width + tx;
+    return layer.tiles[idx] ?? null;
+  }
+
+  if (!layer.chunks) {
+    if (tx < 0 || ty < 0 || tx >= layer.width || ty >= layer.height) return null;
+    const idx = ty * layer.width + tx;
+    return layer.tiles[idx] ?? null;
+  }
+
+  for (const c of layer.chunks) {
+    if (tx >= c.x && tx < c.x + c.width && ty >= c.y && ty < c.y + c.height) {
+      const lx = tx - c.x;
+      const ly = ty - c.y;
+      const idx = ly * c.width + lx;
+      return c.tiles[idx] ?? null;
+    }
+  }
+  return null;
 }

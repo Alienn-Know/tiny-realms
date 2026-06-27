@@ -1,4 +1,5 @@
 import { Container } from 'pixi.js';
+import type { TiledMap } from 'pixi-tiledmap';
 import { CameraComponent } from '../components';
 import { System, World } from '../core/ecs';
 
@@ -18,12 +19,19 @@ import { System, World } from '../core/ecs';
  * За счёт этого все спрайты могут хранить **мировые** координаты напрямую,
  * а изометрия/зум/следование камеры применяются автоматически на уровне
  * одного контейнера (один matrix update, ноль per-sprite math).
+ *
+ * Если передан `tiledMap`, дополнительно вызывается `applyParallax(camX, camY)` —
+ * слои с `parallaxx/parallaxy < 1` движутся медленнее камеры (эффект дальнего фона).
  */
 export class CameraRenderSystem extends System {
   /**
    * @param worldContainer - контейнер, в который добавлены все игровые объекты
+   * @param tiledMap - опционально, TiledMap для применения parallax к слоям
    */
-  constructor(private readonly worldContainer: Container) {
+  constructor(
+    private readonly worldContainer: Container,
+    private readonly tiledMap?: TiledMap,
+  ) {
     super();
   }
 
@@ -46,5 +54,10 @@ export class CameraRenderSystem extends System {
     this.worldContainer.scale.set(zoom);
     this.worldContainer.x = cam.viewportWidth / 2 - cam.x * zoom;
     this.worldContainer.y = cam.viewportHeight / 2 - cam.y * zoom;
+
+    // Parallax: слои с parallax < 1 двигаются медленнее камеры
+    if (this.tiledMap) {
+      this.tiledMap.applyParallax(cam.x, cam.y);
+    }
   }
 }
