@@ -1,4 +1,4 @@
-import { CameraComponent } from '../components';
+import { CameraComponent, TransformComponent } from '../components';
 import { System, World } from '../core/ecs';
 import { ZoomController } from './camera/ZoomController';
 
@@ -55,7 +55,14 @@ export class CameraInputSystem extends System {
       // deltaY > 0 (scroll down) → factor < 1 → zoom уменьшается (отдаление)
       // deltaY < 0 (scroll up)   → factor > 1 → zoom увеличивается (приближение)
       const factor = Math.exp(-event.deltaY * cam.zoomSensitivity);
-      ZoomController.applyZoom(cam, factor, event.clientX, event.clientY);
+      // 📸 Snapshot target'а в момент wheel (а не в момент update)
+      //    — чтобы anchorOffset был привязан к актуальной target-позиции.
+      const target = cam.target !== null
+        ? this.worldRef.getComponent(cam.target, TransformComponent)
+        : null;
+      const tx = target?.x ?? cam.x;
+      const ty = target?.y ?? cam.y;
+      ZoomController.applyZoom(cam, factor, event.clientX, event.clientY, tx, ty);
     }
   };
 }

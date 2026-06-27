@@ -1,4 +1,4 @@
-import { CameraComponent } from '../components';
+import { CameraComponent, TransformComponent } from '../components';
 import { System, World } from '../core/ecs';
 import { ZoomController } from './camera/ZoomController';
 
@@ -86,7 +86,13 @@ export class TouchCameraInputSystem extends System {
     const cameraEntities = this.worldRef.getEntitiesWith(CameraComponent);
     for (const entity of cameraEntities) {
       const cam = this.worldRef.getComponent(entity, CameraComponent)!;
-      ZoomController.applyZoom(cam, factor, mid.x, mid.y);
+      // 📸 Snapshot target'а в момент touch (а не в момент update).
+      const target = cam.target !== null
+        ? this.worldRef.getComponent(cam.target, TransformComponent)
+        : null;
+      const tx = target?.x ?? cam.x;
+      const ty = target?.y ?? cam.y;
+      ZoomController.applyZoom(cam, factor, mid.x, mid.y, tx, ty);
     }
 
     this.lastDist = dist;

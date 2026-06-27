@@ -108,4 +108,23 @@ export class CameraComponent extends Component {
 
   /** 🗺️ Максимальный Y мира. */
   worldMaxY = Infinity;
+
+  // === ZOOM-ANCHOR OFFSET ===
+
+  /**
+   * 🎯 Смещение камеры относительно `target`, введённое wheel-anchor-коррекцией.
+   *
+   * При скролле колеса `ZoomController` сдвигает камеру так, чтобы точка мира
+   * под курсором оставалась под курсором. Это смещение (`cam.x - target.x`)
+   * сохраняется здесь, чтобы `CameraSystem.follow` (snap) мог применить его
+   * без сглаживания — иначе follow стирал бы anchor каждый кадр и камера
+   * «улетала» бы к точке под курсором при непрерывном скролле.
+   *
+   * Стирание: плавный decay в `CameraSystem` после `zoomPushTimer >= zoomHoldTime`
+   * (камера возвращается на target, когда пользователь перестал скроллить).
+   */
+  anchorOffsetX = 0;
+
+  /** 🎯 То же по Y. */
+  anchorOffsetY = 0;
 }
