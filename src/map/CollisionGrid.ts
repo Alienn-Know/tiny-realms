@@ -1,4 +1,6 @@
 import type { ResolvedMap, ResolvedTileLayer } from 'pixi-tiledmap';
+import type { Entity } from '../core/ecs';
+import { computeWorldBounds } from './worldBounds';
 import { buildWalkableByGid } from './WalkableResolver';
 
 /** 📦 AABB (axis-aligned bounding box) в мировых координатах. */
@@ -40,7 +42,7 @@ export class CollisionGrid {
   #tileHeight: number;
 
   /** 🧊 Список твёрдых AABB (entity). */
-  #entityBoxes: Map<symbol, AABB> = new Map();
+  #entityBoxes: Map<Entity, AABB> = new Map();
 
   /**
    * @param map - resolved map (после `parseMap` / `parseMapAsync`)
@@ -50,7 +52,13 @@ export class CollisionGrid {
     this.#walkableByGid = buildWalkableByGid(map, propertyName);
     this.#tileWidth = map.tilewidth;
     this.#tileHeight = map.tileheight;
-    this.#worldBounds = computeWorldBounds(map);
+    const bounds = computeWorldBounds(map);
+    this.#worldBounds = {
+      x: bounds.minX,
+      y: bounds.minY,
+      w: bounds.maxX - bounds.minX,
+      h: bounds.maxY - bounds.minY,
+    };
     this.#tileLayers = collectTileLayers(map);
   }
 
@@ -88,17 +96,17 @@ export class CollisionGrid {
   }
 
   /** ➕ Зарегистрировать твёрдый AABB (entity). */
-  addSolidBox(id: symbol, x: number, y: number, w: number, h: number): void {
-    this.#entityBoxes.set(id, { x, y, w, h });
+  addSolidBox(entity: Entity, x: number, y: number, w: number, h: number): void {
+    this.#entityBoxes.set(entity, { x, y, w, h });
   }
 
   /** ➖ Удалить твёрдый AABB. */
-  removeSolidBox(id: symbol): void {
-    this.#entityBoxes.delete(id);
+  removeSolidBox(entity: Entity): void {
+    this.#entityBoxes.delete(entity);
   }
 
   /** 📦 Получить все зарегистрированные solid boxes (для отладки). */
-  getSolidBoxes(): IterableIterator<[symbol, AABB]> {
+  getSolidBoxes(): IterableIterator<[Entity, AABB]> {
     return this.#entityBoxes.entries();
   }
 
@@ -136,49 +144,6 @@ export class CollisionGrid {
 }
 
 // ── helpers ──────────────────────────────────────────────────────────
-
-/** 📐 Вычислить мировой bbox карты (px). */
-function computeWorldBounds(map: ResolvedMap): AABB {
-  if (!map.infinite) {
-    return {
-      x: 0,
-      y: 0,
-      w: map.width * map.tilewidth,
-      h: map.height * map.tileheight,
-    };
-  }
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const layer of collectTileLayers(map)) {
-    if (layer.chunks) {
-      for (const c of layer.chunks) {
-        const lx = c.x * map.tilewidth;
-        const ly = c.y * map.tileheight;
-        const rx = (c.x + c.width) * map.tilewidth;
-        const ry = (c.y + c.height) * map.tileheight;
-        if (lx < minX) minX = lx;
-        if (ly < minY) minY = ly;
-        if (rx > maxX) maxX = rx;
-        if (ry > maxY) maxY = ry;
-      }
-    } else {
-      const lx = 0;
-      const ly = 0;
-      const rx = layer.width * map.tilewidth;
-      const ry = layer.height * map.tileheight;
-      if (lx < minX) minX = lx;
-      if (ly < minY) minY = ly;
-      if (rx > maxX) maxX = rx;
-      if (ry > maxY) maxY = ry;
-    }
-  }
-  if (minX === Infinity) {
-    return { x: 0, y: 0, w: map.width * map.tilewidth, h: map.height * map.tileheight };
-  }
-  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-}
 
 /** 📚 Собрать все tile-слои (top-level, без recursion в group — group не используем). */
 function collectTileLayers(map: ResolvedMap): ResolvedTileLayer[] {

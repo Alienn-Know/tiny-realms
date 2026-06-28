@@ -4,23 +4,13 @@ import { System, World } from '../core/ecs';
 /**
  * 📷 Обновляет `CameraComponent` каждый кадр в стиле Clash of Clans.
  *
- * Четыре фазы:
- * 1. **Follow** — snap `cam.x/y = target.x/y + anchorOffset{X/Y}`.
- *    AnchorOffset вводится `ZoomController` при wheel/touch, чтобы
- *    zoom-anchor-коррекция не стиралась сглаживанием (иначе камера
- *    «улетала» бы к точке под курсором при непрерывном скролле).
+ * Три фазы:
+ * 1. **Follow** — snap `cam.x/y = target.x/y`. Зум **не сдвигает** камеру —
+ *    она всегда на персонаже (см. {@link ZoomController}).
  * 2. **Zoom spring** — пружина возвращает `zoom` к `zoomRest` (rubber-band).
  * 3. **Bounds clamp** — камера не выходит за `worldBounds` (с учётом `zoom`).
- * 4. **AnchorOffset decay** — после `zoomPushTimer >= zoomHoldTime` плавно
- *    стираем anchorOffset за ~1 сек → камера возвращается на target.
  */
 export class CameraSystem extends System {
-  /**
-   * ⏱️ Скорость decay anchorOffset. exp(-3 * 1sec) ≈ 0.05 → ~95% offset
-   * стирается за 1 секунду. Мягкий возврат камеры на target.
-   */
-  private static readonly ANCHOR_DECAY_RATE = 3;
-
   /**
    * ▶️ Шаг системы.
    * @param world - мир ECS
@@ -30,16 +20,12 @@ export class CameraSystem extends System {
     for (const entity of world.getEntitiesWith(CameraComponent)) {
       const cam = world.getComponent(entity, CameraComponent)!;
 
-      // 1. 📍 Follow target (snap к target + anchorOffset)
-      //    Раньше было экспоненциальное сглаживание к target.x/y — но оно
-      //    стирало wheel-anchor-коррекцию при непрерывном скролле, и камера
-      //    «улетала» в сторону anchor. Теперь snap: anchorOffset хранит
-      //    введённое wheel'ом смещение и применяется целиком.
+      // 1. 📍 Follow target (snap). Зум не сбивает камеру — она всегда на target.
       if (cam.target !== null) {
         const target = world.getComponent(cam.target, TransformComponent);
         if (target) {
-          cam.x = target.x + cam.anchorOffsetX;
-          cam.y = target.y + cam.anchorOffsetY;
+          cam.x = target.x;
+          cam.y = target.y;
         }
       }
 
@@ -61,16 +47,35 @@ export class CameraSystem extends System {
 
       // 3. 🗺️ Bounds clamp (с учётом зума — мир в координатах сцены, без зума)
       //    Эффективный размер вьюпорта в мировых единицах = пиксели / zoom.
+      //    Если вьюпорт ШИРЕ мира — камера лочится в центре мира (иначе
+      //    видны "пустоты" за границами). Если уже — обычный clamp в диапазон.
+      //    Раньше clamp просто отключался при `minY >= maxY` — камера могла
+      //    застрять на границе диапазона (резкий переход через 0-ширину).
       const zoom = Math.max(cam.zoom, 0.0001);
       const viewW = cam.viewportWidth / zoom;
       const viewH = cam.viewportHeight / zoom;
-      const minX = cam.worldMinX + viewW / 2;
-      const maxX = cam.worldMaxX - viewW / 2;
-      const minY = cam.worldMinY + viewH / 2;
-      const maxY = cam.worldMaxY - viewH / 2;
-      // Клампим только если границы шире, чем вьюпорт (иначе карта меньше экрана)
-      if (minX < maxX) cam.x = Math.max(minX, Math.min(maxX, cam.x));
-      if (minY < maxY) cam.y = Math.max(minY, Math.min(maxY, cam.y));
+      const worldCenterX = (cam.worldMinX + cam.worldMaxX) / 2;
+      const worldCenterY = (cam.worldMinY + cam.worldMaxY) / 2;
+
+      // X
+      const xRange = cam.worldMaxX - cam.worldMinX - viewW;
+      if (xRange > 0) {
+        const minX = cam.worldMinX + viewW / 2;
+        const maxX = cam.worldMaxX - viewW / 2;
+        cam.x = Math.max(minX, Math.min(maxX, cam.x));
+      } else {
+        cam.x = worldCenterX;
+      }
+
+      // Y
+      const yRange = cam.worldMaxY - cam.worldMinY - viewH;
+      if (yRange > 0) {
+        const minY = cam.worldMinY + viewH / 2;
+        const maxY = cam.worldMaxY - viewH / 2;
+        cam.y = Math.max(minY, Math.min(maxY, cam.y));
+      } else {
+        cam.y = worldCenterY;
+      }
 
       // 4. ⏱️ Overshoot-release таймер.
       //    Пока `cam.zoom` в overshoot-диапазоне (`zoom > maxZoom` или
@@ -83,20 +88,6 @@ export class CameraSystem extends System {
         cam.zoomPushTimer += dt;
       } else {
         cam.zoomPushTimer = 0;
-      }
-
-      // 5. 🎯 AnchorOffset decay — после того как юзер перестал скроллить
-      //    (`zoomPushTimer >= zoomHoldTime`) плавно стираем введённое
-      //    wheel-смещение. Камера естественно возвращается на target за ~1 сек.
-      //    Пока юзер скроллит (`zoomPushTimer < zoomHoldTime`) — offset
-      //    не стирается (только обновляется в ZoomController).
-      if (cam.zoomPushTimer >= cam.zoomHoldTime) {
-        const decay = 1 - Math.exp(-CameraSystem.ANCHOR_DECAY_RATE * dt);
-        cam.anchorOffsetX *= 1 - decay;
-        cam.anchorOffsetY *= 1 - decay;
-        // Микро-числа → 0, чтобы не дрифтили вечно
-        if (Math.abs(cam.anchorOffsetX) < 1e-4) cam.anchorOffsetX = 0;
-        if (Math.abs(cam.anchorOffsetY) < 1e-4) cam.anchorOffsetY = 0;
       }
     }
   }

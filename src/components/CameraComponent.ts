@@ -58,23 +58,22 @@ export class CameraComponent extends Component {
   maxZoom = 2;
 
   /** 🧈 Жёсткость пружины зума. Больше = быстрее возвращается к лимиту. */
-  // zoomSpringK = 80;
   zoomSpringK = 80;
 
   /** 🛑 Коэффициент демпфирования пружины зума. Больше = меньше колебаний. */
-  // zoomDamping = 14;
   zoomDamping = 28;
 
   /** 🖱️ Чувствительность колеса мыши. Больше = сильнее реагирует на один тик.
-   *  В {@link InputSystem.onWheel} дополнительно клампится итоговый множитель
+   *  В {@link ZoomController.applyZoom} дополнительно клампится итоговый множитель
    *  за один event (MIN_FACTOR = 0.85). */
   zoomSensitivity = 0.0012;
 
   /** 🛡️ Допустимый overshoot `cam.zoom` за лимиты `[minZoom, maxZoom]`.
    *  Мультипликативный фактор: `0` = hard cap (нельзя превысить ни на сколько),
+   *  `0.1` = можно уйти до `[minZoom × 0.9, maxZoom × 1.1]` (CoC rubber-band),
    *  `0.3` = можно уйти до `[minZoom × 0.7, maxZoom × 1.3]`,
    *  `1.0` = можно уйти до `[0, maxZoom × 2]`.
-   *  Используется в {@link InputSystem.onWheel} как safety-net:
+   *  Используется в {@link ZoomController.applyZoom} как safety-net:
    *  rubber-band растяжение жёстко ограничено этим фактором, чтобы зум
    *  не "улетал" в космос при серии wheel-событий. */
   zoomOvershoot = 0;
@@ -83,16 +82,17 @@ export class CameraComponent extends Component {
    *  прежде чем её "отпустит" обратно к лимиту. Логика:
    *  - Камера входит в overshoot (`zoom > maxZoom` или `zoom < minZoom`) — таймер
    *    начинает считать (`CameraSystem`).
-   *  - Каждый wheel-event в overshoot сбрасывает таймер в `0` (`InputSystem`).
+   *  - Каждый wheel-event в overshoot сбрасывает таймер в `0`
+   *    (`CameraInputSystem` / `TouchCameraInputSystem`).
    *    Пока юзер скроллит — камера "прилипает" в overshoot.
    *  - Через `zoomHoldTime` секунд без скролла — камера "отпускается"
-   *    (`zoom = zoomRest`, snap к лимиту).
+   *    (пружина тянет `zoom` к `zoomRest`).
    *  - Стоит камере уйти из overshoot — таймер сбрасывается в `0`. */
   zoomHoldTime = 0.5;
 
   /** ⏱️ Текущий счётчик пребывания в overshoot-диапазоне без wheel-событий (сек).
-   *  Управляется `InputSystem` (сброс в `0` на wheel) и `CameraSystem`
-   *  (инкремент пока в overshoot, snap при достижении `zoomHoldTime`). */
+   *  Управляется `ZoomController` (сброс в `0` при wheel/touch) и `CameraSystem`
+   *  (инкремент пока в overshoot, разморозка пружины при достижении `zoomHoldTime`). */
   zoomPushTimer = 0;
 
   // === BOUNDS ===
@@ -108,23 +108,4 @@ export class CameraComponent extends Component {
 
   /** 🗺️ Максимальный Y мира. */
   worldMaxY = Infinity;
-
-  // === ZOOM-ANCHOR OFFSET ===
-
-  /**
-   * 🎯 Смещение камеры относительно `target`, введённое wheel-anchor-коррекцией.
-   *
-   * При скролле колеса `ZoomController` сдвигает камеру так, чтобы точка мира
-   * под курсором оставалась под курсором. Это смещение (`cam.x - target.x`)
-   * сохраняется здесь, чтобы `CameraSystem.follow` (snap) мог применить его
-   * без сглаживания — иначе follow стирал бы anchor каждый кадр и камера
-   * «улетала» бы к точке под курсором при непрерывном скролле.
-   *
-   * Стирание: плавный decay в `CameraSystem` после `zoomPushTimer >= zoomHoldTime`
-   * (камера возвращается на target, когда пользователь перестал скроллить).
-   */
-  anchorOffsetX = 0;
-
-  /** 🎯 То же по Y. */
-  anchorOffsetY = 0;
 }
